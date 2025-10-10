@@ -1,0 +1,702 @@
+-- ============================================
+-- College Timetable Management System - MySQL
+-- Database Schema with Constraints & Relations
+-- ============================================
+
+-- Drop database if exists and create new one
+DROP DATABASE IF EXISTS college_timetable;
+CREATE DATABASE college_timetable CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE college_timetable;
+
+-- ============================================
+-- 1. DEPARTMENTS TABLE
+-- ============================================
+CREATE TABLE departments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    code VARCHAR(10) NOT NULL UNIQUE,
+    head_of_department VARCHAR(100),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_dept_code (code),
+    INDEX idx_dept_name (name)
+);
+
+-- ============================================
+-- 2. ACADEMIC YEARS TABLE
+-- ============================================
+CREATE TABLE academic_years (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    year_name VARCHAR(20) NOT NULL UNIQUE COMMENT 'e.g., 2024-25',
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    is_current TINYINT(1) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT chk_academic_year_dates CHECK (end_date > start_date),
+    INDEX idx_academic_current (is_current),
+    INDEX idx_academic_year (year_name)
+);
+
+-- ============================================
+-- 3. TEACHERS TABLE
+-- ============================================
+CREATE TABLE teachers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    employee_id VARCHAR(20) NOT NULL UNIQUE,
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(15),
+    department_id INT,
+    weekly_hours_limit INT DEFAULT 25,
+    specialization TEXT,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_teacher_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+    CONSTRAINT chk_weekly_hours_positive CHECK (weekly_hours_limit > 0),
+    
+    INDEX idx_teacher_dept (department_id),
+    INDEX idx_teacher_employee_id (employee_id),
+    INDEX idx_teacher_active (is_active)
+);
+
+-- ============================================
+-- 4. TEACHER AVAILABILITY TABLE
+-- ============================================
+CREATE TABLE teacher_availability (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    teacher_id INT NOT NULL,
+    day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday') NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    is_available TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_availability_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+    CONSTRAINT chk_availability_time CHECK (end_time > start_time),
+    
+    UNIQUE KEY uk_teacher_availability (teacher_id, day_of_week, start_time, end_time),
+    INDEX idx_availability_teacher_day (teacher_id, day_of_week),
+    INDEX idx_availability_day (day_of_week)
+);
+
+-- ============================================
+-- 5. ROOMS TABLE (Classrooms & Labs)
+-- ============================================
+CREATE TABLE rooms (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    room_number VARCHAR(20) NOT NULL UNIQUE,
+    capacity INT NOT NULL,
+    room_type ENUM('classroom', 'lab', 'auditorium') NOT NULL,
+    department_id INT,
+    has_projector TINYINT(1) DEFAULT 0,
+    has_ac TINYINT(1) DEFAULT 0,
+    equipment TEXT,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_room_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+    CONSTRAINT chk_room_capacity CHECK (capacity > 0),
+    
+    INDEX idx_room_type (room_type),
+    INDEX idx_room_dept (department_id),
+    INDEX idx_room_number (room_number),
+    INDEX idx_room_active (is_active)
+);
+
+-- ============================================
+-- 6. COURSES TABLE (Subjects)
+-- ============================================
+CREATE TABLE courses (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(20) NOT NULL UNIQUE,
+    course_type ENUM('theory', 'lab') NOT NULL,
+    credits INT NOT NULL,
+    hours_per_week INT NOT NULL,
+    department_id INT NOT NULL,
+    semester ENUM('1', '2', '3', '4', '5', '6', '7', '8') NOT NULL,
+    description TEXT,
+    prerequisites TEXT,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_course_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+    CONSTRAINT chk_course_credits CHECK (credits > 0),
+    CONSTRAINT chk_course_hours CHECK (hours_per_week > 0),
+    
+    INDEX idx_course_dept (department_id),
+    INDEX idx_course_type (course_type),
+    INDEX idx_course_semester (semester),
+    INDEX idx_course_code (code),
+    INDEX idx_course_active (is_active)
+);
+
+-- ============================================
+-- 7. TEACHER-COURSE MAPPING TABLE
+-- ============================================
+CREATE TABLE teacher_courses (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    teacher_id INT NOT NULL,
+    course_id INT NOT NULL,
+    is_primary TINYINT(1) DEFAULT 0 COMMENT 'Primary teacher for this course',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_teacher_course_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+    CONSTRAINT fk_teacher_course_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    
+    UNIQUE KEY uk_teacher_course (teacher_id, course_id),
+    INDEX idx_teacher_courses_teacher (teacher_id),
+    INDEX idx_teacher_courses_course (course_id),
+    INDEX idx_primary_teachers (is_primary)
+);
+
+-- ============================================
+-- 8. DIVISIONS TABLE (Dynamic based on year & branch)
+-- ============================================
+CREATE TABLE divisions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(10) NOT NULL COMMENT 'A, B, C, etc.',
+    year INT NOT NULL COMMENT '1st, 2nd, 3rd, 4th year',
+    branch VARCHAR(50) NOT NULL COMMENT 'CS, IT, MECH, etc.',
+    department_id INT NOT NULL,
+    academic_year_id INT NOT NULL,
+    total_students INT DEFAULT 0,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_division_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_division_academic_year FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    CONSTRAINT chk_division_year CHECK (year BETWEEN 1 AND 4),
+    CONSTRAINT chk_division_students CHECK (total_students >= 0),
+    
+    UNIQUE KEY uk_division_unique (name, year, branch, academic_year_id),
+    INDEX idx_division_year_branch (year, branch),
+    INDEX idx_division_dept (department_id),
+    INDEX idx_division_academic (academic_year_id),
+    INDEX idx_division_active (is_active)
+);
+
+-- ============================================
+-- 9. TIME SLOTS TABLE
+-- ============================================
+CREATE TABLE time_slots (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    duration_minutes INT NOT NULL,
+    slot_name VARCHAR(50) COMMENT 'Period 1, Lab Session A, etc.',
+    is_break TINYINT(1) DEFAULT 0,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT chk_timeslot_duration CHECK (duration_minutes > 0),
+    CONSTRAINT chk_timeslot_time CHECK (end_time > start_time),
+    
+    UNIQUE KEY uk_timeslot_time (start_time, end_time),
+    INDEX idx_timeslot_start (start_time),
+    INDEX idx_timeslot_active (is_active),
+    INDEX idx_timeslot_break (is_break)
+);
+
+-- ============================================
+-- 10. MAIN TIMETABLE ENTRIES TABLE
+-- ============================================
+CREATE TABLE timetable_entries (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    division_id INT NOT NULL,
+    course_id INT NOT NULL,
+    teacher_id INT NOT NULL,
+    room_id INT NOT NULL,
+    time_slot_id INT NOT NULL,
+    day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday') NOT NULL,
+    academic_year_id INT NOT NULL,
+    week_number INT DEFAULT 1,
+    is_recurring TINYINT(1) DEFAULT 1,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Foreign Key Constraints
+    CONSTRAINT fk_timetable_division FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_timetable_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    CONSTRAINT fk_timetable_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+    CONSTRAINT fk_timetable_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    CONSTRAINT fk_timetable_timeslot FOREIGN KEY (time_slot_id) REFERENCES time_slots(id) ON DELETE CASCADE,
+    CONSTRAINT fk_timetable_academic_year FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    
+    -- Business Logic Constraints
+    CONSTRAINT chk_week_number CHECK (week_number > 0),
+    
+    -- Performance Indexes
+    INDEX idx_timetable_division_day (division_id, day_of_week),
+    INDEX idx_timetable_teacher_day (teacher_id, day_of_week),
+    INDEX idx_timetable_room_day (room_id, day_of_week),
+    INDEX idx_timetable_timeslot_day (time_slot_id, day_of_week),
+    INDEX idx_timetable_academic (academic_year_id),
+    INDEX idx_timetable_weekly (week_number, is_recurring)
+);
+
+-- ============================================
+-- 11. STUDENTS TABLE (Optional for future features)
+-- ============================================
+CREATE TABLE students (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    roll_number VARCHAR(20) NOT NULL UNIQUE,
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(15),
+    division_id INT,
+    admission_year INT NOT NULL,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    CONSTRAINT fk_student_division FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE SET NULL,
+    
+    INDEX idx_student_roll (roll_number),
+    INDEX idx_student_division (division_id),
+    INDEX idx_student_admission (admission_year),
+    INDEX idx_student_active (is_active)
+);
+
+-- ============================================
+-- STORED PROCEDURES FOR VALIDATION
+-- ============================================
+
+-- Procedure to check teacher weekly hours
+DELIMITER //
+CREATE PROCEDURE CheckTeacherWeeklyHours(
+    IN p_teacher_id INT,
+    IN p_time_slot_id INT,
+    IN p_academic_year_id INT,
+    IN p_timetable_entry_id INT
+)
+BEGIN
+    DECLARE total_hours DECIMAL(5,2);
+    DECLARE teacher_limit INT;
+    DECLARE slot_duration INT;
+    
+    -- Get teacher's weekly hours limit
+    SELECT weekly_hours_limit INTO teacher_limit
+    FROM teachers 
+    WHERE id = p_teacher_id;
+    
+    -- Get slot duration
+    SELECT duration_minutes INTO slot_duration
+    FROM time_slots 
+    WHERE id = p_time_slot_id;
+    
+    -- Calculate current weekly hours for this teacher
+    SELECT COALESCE(SUM(ts.duration_minutes), 0) / 60 INTO total_hours
+    FROM timetable_entries te
+    JOIN time_slots ts ON te.time_slot_id = ts.id
+    WHERE te.teacher_id = p_teacher_id 
+    AND te.academic_year_id = p_academic_year_id
+    AND (p_timetable_entry_id IS NULL OR te.id != p_timetable_entry_id);
+    
+    -- Add current entry duration
+    SET total_hours = total_hours + (slot_duration / 60);
+    
+    IF total_hours > teacher_limit THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = CONCAT('Teacher weekly hours limit exceeded. Current: ', total_hours, ' hours, Limit: ', teacher_limit, ' hours');
+    END IF;
+END //
+
+-- Procedure to check room conflicts
+CREATE PROCEDURE CheckRoomConflict(
+    IN p_room_id INT,
+    IN p_day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'),
+    IN p_time_slot_id INT,
+    IN p_academic_year_id INT,
+    IN p_timetable_entry_id INT
+)
+BEGIN
+    DECLARE conflict_count INT;
+    
+    SELECT COUNT(*) INTO conflict_count
+    FROM timetable_entries 
+    WHERE room_id = p_room_id 
+    AND day_of_week = p_day_of_week 
+    AND time_slot_id = p_time_slot_id
+    AND academic_year_id = p_academic_year_id
+    AND (p_timetable_entry_id IS NULL OR id != p_timetable_entry_id);
+    
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Room conflict: Room is already booked for this time slot';
+    END IF;
+END //
+
+-- Procedure to check teacher conflicts
+CREATE PROCEDURE CheckTeacherConflict(
+    IN p_teacher_id INT,
+    IN p_day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'),
+    IN p_time_slot_id INT,
+    IN p_academic_year_id INT,
+    IN p_timetable_entry_id INT
+)
+BEGIN
+    DECLARE conflict_count INT;
+    
+    SELECT COUNT(*) INTO conflict_count
+    FROM timetable_entries 
+    WHERE teacher_id = p_teacher_id 
+    AND day_of_week = p_day_of_week 
+    AND time_slot_id = p_time_slot_id
+    AND academic_year_id = p_academic_year_id
+    AND (p_timetable_entry_id IS NULL OR id != p_timetable_entry_id);
+    
+    IF conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Teacher conflict: Teacher is already scheduled for this time slot';
+    END IF;
+END //
+
+-- Procedure to check teacher availability
+CREATE PROCEDURE CheckTeacherAvailability(
+    IN p_teacher_id INT,
+    IN p_day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'),
+    IN p_time_slot_id INT
+)
+BEGIN
+    DECLARE slot_start_time TIME;
+    DECLARE slot_end_time TIME;
+    DECLARE availability_count INT;
+    
+    -- Get time slot details
+    SELECT start_time, end_time INTO slot_start_time, slot_end_time
+    FROM time_slots 
+    WHERE id = p_time_slot_id;
+    
+    -- Check if teacher is available during this time
+    SELECT COUNT(*) INTO availability_count
+    FROM teacher_availability 
+    WHERE teacher_id = p_teacher_id 
+    AND day_of_week = p_day_of_week 
+    AND start_time <= slot_start_time 
+    AND end_time >= slot_end_time
+    AND is_available = 1;
+    
+    IF availability_count = 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Teacher is not available during this time slot';
+    END IF;
+END //
+
+DELIMITER ;
+
+-- ============================================
+-- TRIGGERS FOR AUTOMATIC VALIDATION
+-- ============================================
+
+DELIMITER //
+
+-- Trigger for timetable entry validation (INSERT)
+CREATE TRIGGER timetable_entry_validation_insert
+BEFORE INSERT ON timetable_entries
+FOR EACH ROW
+BEGIN
+    CALL CheckTeacherWeeklyHours(NEW.teacher_id, NEW.time_slot_id, NEW.academic_year_id, NULL);
+    CALL CheckRoomConflict(NEW.room_id, NEW.day_of_week, NEW.time_slot_id, NEW.academic_year_id, NULL);
+    CALL CheckTeacherConflict(NEW.teacher_id, NEW.day_of_week, NEW.time_slot_id, NEW.academic_year_id, NULL);
+    CALL CheckTeacherAvailability(NEW.teacher_id, NEW.day_of_week, NEW.time_slot_id);
+END //
+
+-- Trigger for timetable entry validation (UPDATE)
+CREATE TRIGGER timetable_entry_validation_update
+BEFORE UPDATE ON timetable_entries
+FOR EACH ROW
+BEGIN
+    CALL CheckTeacherWeeklyHours(NEW.teacher_id, NEW.time_slot_id, NEW.academic_year_id, NEW.id);
+    CALL CheckRoomConflict(NEW.room_id, NEW.day_of_week, NEW.time_slot_id, NEW.academic_year_id, NEW.id);
+    CALL CheckTeacherConflict(NEW.teacher_id, NEW.day_of_week, NEW.time_slot_id, NEW.academic_year_id, NEW.id);
+    CALL CheckTeacherAvailability(NEW.teacher_id, NEW.day_of_week, NEW.time_slot_id);
+END //
+
+DELIMITER ;
+
+-- ============================================
+-- SAMPLE DATA FOR TESTING
+-- ============================================
+
+-- Insert sample departments
+INSERT INTO departments (name, code, head_of_department) VALUES
+('Computer Science', 'CS', 'Dr. John Smith'),
+('Information Technology', 'IT', 'Dr. Jane Doe'),
+('Mechanical Engineering', 'MECH', 'Dr. Bob Johnson'),
+('Electronics & Communication', 'ECE', 'Dr. Alice Brown');
+
+-- Insert academic year
+INSERT INTO academic_years (year_name, start_date, end_date, is_current) VALUES
+('2024-25', '2024-07-01', '2025-06-30', 1);
+
+-- Insert sample time slots
+INSERT INTO time_slots (start_time, end_time, duration_minutes, slot_name) VALUES
+('09:00:00', '09:50:00', 50, 'Period 1'),
+('09:50:00', '10:40:00', 50, 'Period 2'),
+('10:40:00', '11:00:00', 20, 'Break'),
+('11:00:00', '11:50:00', 50, 'Period 3'),
+('11:50:00', '12:40:00', 50, 'Period 4'),
+('12:40:00', '01:30:00', 50, 'Lunch Break'),
+('01:30:00', '02:20:00', 50, 'Period 5'),
+('02:20:00', '03:10:00', 50, 'Period 6'),
+('03:10:00', '05:10:00', 120, 'Lab Session A'),
+('03:10:00', '05:10:00', 120, 'Lab Session B');
+
+-- Insert sample rooms
+INSERT INTO rooms (name, room_number, capacity, room_type, department_id) VALUES
+('CS Lab 1', 'CS-101', 60, 'lab', 1),
+('CS Lab 2', 'CS-102', 60, 'lab', 1),
+('Classroom A', 'GEN-201', 80, 'classroom', NULL),
+('Classroom B', 'GEN-202', 80, 'classroom', NULL),
+('IT Lab 1', 'IT-101', 50, 'lab', 2),
+('Main Auditorium', 'AUD-001', 300, 'auditorium', NULL);
+
+-- Insert sample teachers
+INSERT INTO teachers (name, employee_id, email, department_id, weekly_hours_limit, specialization) VALUES
+('Dr. Smith Johnson', 'EMP001', 'smith@college.edu', 1, 20, 'Data Structures, Algorithms'),
+('Prof. Mary Wilson', 'EMP002', 'mary@college.edu', 1, 18, 'Database Systems, Web Development'),
+('Dr. David Brown', 'EMP003', 'david@college.edu', 2, 22, 'Network Security, Cloud Computing'),
+('Prof. Sarah Davis', 'EMP004', 'sarah@college.edu', 1, 20, 'Machine Learning, AI');
+
+-- Insert sample courses
+INSERT INTO courses (name, code, course_type, credits, hours_per_week, department_id, semester) VALUES
+('Data Structures', 'CS201', 'theory', 4, 4, 1, '3'),
+('Data Structures Lab', 'CS201L', 'lab', 2, 2, 1, '3'),
+('Database Management', 'CS301', 'theory', 4, 4, 1, '5'),
+('Database Lab', 'CS301L', 'lab', 2, 2, 1, '5'),
+('Computer Networks', 'IT201', 'theory', 4, 4, 2, '4'),
+('Network Lab', 'IT201L', 'lab', 2, 2, 2, '4');
+
+-- Insert teacher availability (Mon-Fri, 9 AM to 5 PM)
+INSERT INTO teacher_availability (teacher_id, day_of_week, start_time, end_time) VALUES
+(1, 'monday', '09:00:00', '17:00:00'),
+(1, 'tuesday', '09:00:00', '17:00:00'),
+(1, 'wednesday', '09:00:00', '17:00:00'),
+(1, 'thursday', '09:00:00', '17:00:00'),
+(1, 'friday', '09:00:00', '17:00:00'),
+(2, 'monday', '09:00:00', '17:00:00'),
+(2, 'tuesday', '09:00:00', '17:00:00'),
+(2, 'wednesday', '09:00:00', '17:00:00'),
+(2, 'thursday', '09:00:00', '17:00:00'),
+(2, 'friday', '09:00:00', '17:00:00');
+
+-- Insert teacher-course mappings
+INSERT INTO teacher_courses (teacher_id, course_id, is_primary) VALUES
+(1, 1, 1), -- Dr. Smith teaches Data Structures (primary)
+(1, 2, 1), -- Dr. Smith teaches Data Structures Lab (primary)
+(2, 3, 1), -- Prof. Mary teaches Database Management (primary)
+(2, 4, 1), -- Prof. Mary teaches Database Lab (primary)
+(3, 5, 1), -- Dr. David teaches Computer Networks (primary)
+(3, 6, 1); -- Dr. David teaches Network Lab (primary)
+
+-- Insert sample divisions
+INSERT INTO divisions (name, year, branch, department_id, academic_year_id, total_students) VALUES
+('A', 2, 'Computer Science', 1, 1, 60),
+('B', 2, 'Computer Science', 1, 1, 58),
+('A', 2, 'Information Technology', 2, 1, 55),
+('A', 3, 'Computer Science', 1, 1, 62),
+('B', 3, 'Computer Science', 1, 1, 59);
+
+-- ============================================
+-- VIEWS FOR EASY DATA RETRIEVAL
+-- ============================================
+
+-- Complete timetable view
+CREATE VIEW v_complete_timetable AS
+SELECT 
+    te.id,
+    d.name as division_name,
+    d.year,
+    d.branch,
+    c.name as course_name,
+    c.code as course_code,
+    c.course_type,
+    t.name as teacher_name,
+    r.name as room_name,
+    r.room_number,
+    ts.start_time,
+    ts.end_time,
+    ts.slot_name,
+    te.day_of_week,
+    ay.year_name as academic_year,
+    te.notes,
+    te.is_recurring
+FROM timetable_entries te
+JOIN divisions d ON te.division_id = d.id
+JOIN courses c ON te.course_id = c.id
+JOIN teachers t ON te.teacher_id = t.id
+JOIN rooms r ON te.room_id = r.id
+JOIN time_slots ts ON te.time_slot_id = ts.id
+JOIN academic_years ay ON te.academic_year_id = ay.id
+WHERE te.id IS NOT NULL
+ORDER BY d.year, d.branch, d.name, te.day_of_week, ts.start_time;
+
+-- Teacher workload view
+CREATE VIEW v_teacher_workload AS
+SELECT 
+    t.id,
+    t.name as teacher_name,
+    t.employee_id,
+    t.weekly_hours_limit,
+    COALESCE(SUM(ts.duration_minutes), 0) / 60 as current_weekly_hours,
+    t.weekly_hours_limit - COALESCE(SUM(ts.duration_minutes), 0) / 60 as remaining_hours,
+    COUNT(te.id) as total_classes,
+    ay.year_name as academic_year
+FROM teachers t
+LEFT JOIN timetable_entries te ON t.id = te.teacher_id
+LEFT JOIN time_slots ts ON te.time_slot_id = ts.id
+LEFT JOIN academic_years ay ON te.academic_year_id = ay.id
+WHERE ay.is_current = 1 OR ay.id IS NULL
+GROUP BY t.id, t.name, t.employee_id, t.weekly_hours_limit, ay.year_name;
+
+-- Room utilization view
+CREATE VIEW v_room_utilization AS
+SELECT 
+    r.id,
+    r.name as room_name,
+    r.room_number,
+    r.room_type,
+    r.capacity,
+    COUNT(te.id) as total_bookings,
+    GROUP_CONCAT(DISTINCT te.day_of_week ORDER BY te.day_of_week) as busy_days
+FROM rooms r
+LEFT JOIN timetable_entries te ON r.id = te.room_id
+LEFT JOIN academic_years ay ON te.academic_year_id = ay.id
+WHERE ay.is_current = 1 OR ay.id IS NULL
+GROUP BY r.id, r.name, r.room_number, r.room_type, r.capacity;
+
+-- ============================================
+-- USEFUL FUNCTIONS
+-- ============================================
+
+DELIMITER //
+
+-- Function to get division timetable
+CREATE PROCEDURE GetDivisionTimetable(
+    IN p_division_id INT,
+    IN p_academic_year_id INT
+)
+BEGIN
+    SELECT 
+        te.day_of_week,
+        ts.start_time,
+        ts.end_time,
+        ts.slot_name,
+        c.name as course_name,
+        c.code as course_code,
+        c.course_type,
+        t.name as teacher_name,
+        r.name as room_name,
+        r.room_number,
+        te.notes
+    FROM timetable_entries te
+    JOIN courses c ON te.course_id = c.id
+    JOIN teachers t ON te.teacher_id = t.id
+    JOIN rooms r ON te.room_id = r.id
+    JOIN time_slots ts ON te.time_slot_id = ts.id
+    WHERE te.division_id = p_division_id 
+    AND te.academic_year_id = p_academic_year_id
+    ORDER BY 
+        FIELD(te.day_of_week, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'),
+        ts.start_time;
+END //
+
+-- Function to check conflicts before insertion
+CREATE PROCEDURE CheckAllConflicts(
+    IN p_teacher_id INT,
+    IN p_room_id INT,
+    IN p_time_slot_id INT,
+    IN p_day_of_week ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'),
+    IN p_academic_year_id INT
+)
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE conflict_msg TEXT DEFAULT '';
+    
+    -- Check all constraints
+    CALL CheckTeacherAvailability(p_teacher_id, p_day_of_week, p_time_slot_id);
+    CALL CheckTeacherConflict(p_teacher_id, p_day_of_week, p_time_slot_id, p_academic_year_id, NULL);
+    CALL CheckRoomConflict(p_room_id, p_day_of_week, p_time_slot_id, p_academic_year_id, NULL);
+    CALL CheckTeacherWeeklyHours(p_teacher_id, p_time_slot_id, p_academic_year_id, NULL);
+    
+    SELECT 'No conflicts found' as result;
+END //
+
+DELIMITER ;
+
+-- ============================================
+-- DATABASE DOCUMENTATION
+-- ============================================
+
+/*
+CARDINALITY & RELATIONSHIPS:
+
+1. DEPARTMENTS (1) -> TEACHERS (N)
+   - One department can have many teachers
+   - One teacher belongs to one department
+
+2. DEPARTMENTS (1) -> ROOMS (N)
+   - One department can have many rooms
+   - One room can belong to one department
+
+3. DEPARTMENTS (1) -> COURSES (N)
+   - One department offers many courses
+   - One course belongs to one department
+
+4. DEPARTMENTS (1) -> DIVISIONS (N)
+   - One department has many divisions
+   - One division belongs to one department
+
+5. TEACHERS (M) -> COURSES (N) via TEACHER_COURSES
+   - Many teachers can teach many courses
+   - Many-to-many relationship
+
+6. TEACHERS (1) -> TEACHER_AVAILABILITY (N)
+   - One teacher has many availability slots
+   - One availability slot belongs to one teacher
+
+7. ACADEMIC_YEARS (1) -> DIVISIONS (N)
+   - One academic year has many divisions
+   - One division belongs to one academic year
+
+8. DIVISIONS (1) -> STUDENTS (N)
+   - One division has many students
+   - One student belongs to one division
+
+9. TIMETABLE_ENTRIES - Central table with multiple foreign keys:
+   - DIVISIONS (1) -> TIMETABLE_ENTRIES (N)
+   - COURSES (1) -> TIMETABLE_ENTRIES (N)
+   - TEACHERS (1) -> TIMETABLE_ENTRIES (N)
+   - ROOMS (1) -> TIMETABLE_ENTRIES (N)
+   - TIME_SLOTS (1) -> TIMETABLE_ENTRIES (N)
+   - ACADEMIC_YEARS (1) -> TIMETABLE_ENTRIES (N)
+
+CONSTRAINTS ENFORCED:
+- Teacher weekly hours limit
+- Room conflict prevention
+- Teacher conflict prevention
+- Teacher availability checking
+- Data integrity via foreign keys
+- Business logic via check constraints
+
+INDEXES OPTIMIZED FOR:
+- Timetable queries by division and day
+- Teacher schedule queries
+- Room availability queries
+- Course lookups
+- Performance on frequent joins
+*/
+
+-- ============================================
+-- END OF SCHEMA
+-- ============================================
