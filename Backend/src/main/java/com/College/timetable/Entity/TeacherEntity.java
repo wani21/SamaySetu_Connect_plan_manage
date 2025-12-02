@@ -79,6 +79,21 @@ public class TeacherEntity implements UserDetails{
 	@Column(name = "role")
 	private String role="TEACHER";
 	
+	@Column(name = "is_email_verified")
+	private Boolean isEmailVerified = false;
+	
+	@Column(name = "verification_token")
+	private String verificationToken;
+	
+	@Column(name = "verification_token_expiry")
+	private Timestamp verificationTokenExpiry;
+	
+	@Column(name = "password_reset_token")
+	private String passwordResetToken;
+	
+	@Column(name = "password_reset_token_expiry")
+	private Timestamp passwordResetTokenExpiry;
+	
 	@CreationTimestamp
 	@Column(name = "created_at", updatable = false)
 	private Timestamp createdAt;

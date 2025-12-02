@@ -1,0 +1,458 @@
+{
+	"info": {
+		"_postman_id": "samaysetu-api-collection",
+		"name": "SamaySetu Timetable API",
+		"description": "Complete API collection for SamaySetu Timetable Management System with Authentication, Email Verification, and CRUD operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwt_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8083",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "verification_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "reset_token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "1. Generate Password Hash",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": \"test123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/",
+							"host": ["{{base_url}}"],
+							"path": ["auth", ""]
+						},
+						"description": "Utility endpoint to generate BCrypt password hash"
+					},
+					"response": []
+				},
+				{
+					"name": "2. Register Teacher",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Registration successful\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Test Teacher\",\n  \"employeeId\": \"TEST001\",\n  \"email\": \"test@mitaoe.ac.in\",\n  \"phone\": \"1234567890\",\n  \"password\": \"test123\",\n  \"specialization\": \"Computer Science\",\n  \"departmentId\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register new teacher with college email (@mitaoe.ac.in). Sends verification email."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Verify Email",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Email verified\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auth/verify-email?token={{verification_token}}",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "verify-email"],
+							"query": [
+								{
+									"key": "token",
+									"value": "{{verification_token}}",
+									"description": "Verification token from email"
+								}
+							]
+						},
+						"description": "Verify email using token from verification email. Required before login."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Login successful\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    var jsonData = pm.response.json();",
+									"    pm.environment.set(\"jwt_token\", jsonData.token);",
+									"    pm.collectionVariables.set(\"jwt_token\", jsonData.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"test@mitaoe.ac.in\",\n  \"password\": \"test123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						},
+						"description": "Login with verified email. Returns JWT token. Email must be verified first."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Forgot Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Reset email sent\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"test@mitaoe.ac.in\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/forgot-password",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "forgot-password"]
+						},
+						"description": "Request password reset. Sends reset link to email."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Reset Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Password reset successful\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"newPassword\": \"newPassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/reset-password",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "reset-password"]
+						},
+						"description": "Reset password using token from reset email."
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints including registration, email verification, login, and password reset"
+		},
+		{
+			"name": "Teachers",
+			"item": [
+				{
+					"name": "Create Teacher",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Prof. Jane Doe\",\n  \"employeeId\": \"EMP001\",\n  \"email\": \"jane.doe@mitaoe.ac.in\",\n  \"phone\": \"9876543210\",\n  \"weeklyHoursLimit\": 25,\n  \"specialization\": \"Data Structures, Algorithms\",\n  \"isActive\": true,\n  \"password\": \"password123\",\n  \"role\": \"TEACHER\",\n  \"department\": {\n    \"id\": 1\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/teachers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "teachers"]
+						},
+						"description": "Create new teacher. Requires TEACHER role authentication."
+					},
+					"response": []
+				}
+			],
+			"description": "Teacher management endpoints"
+		},
+		{
+			"name": "Departments (Admin)",
+			"item": [
+				{
+					"name": "Create Department",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Computer Science\",\n  \"code\": \"CS\",\n  \"headOfDepartment\": \"Dr. John Smith\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/departments",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "departments"]
+						},
+						"description": "Create new department. Requires ADMIN role."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Departments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/departments",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "departments"]
+						},
+						"description": "Get list of all departments. Requires ADMIN role."
+					},
+					"response": []
+				}
+			],
+			"description": "Department management endpoints (Admin only)"
+		},
+		{
+			"name": "Courses (Admin)",
+			"item": [
+				{
+					"name": "Create Course",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Data Structures\",\n  \"code\": \"CS201\",\n  \"courseType\": \"THEORY\",\n  \"credits\": 4,\n  \"hoursPerWeek\": 4,\n  \"semester\": \"SEM_3\",\n  \"description\": \"Introduction to data structures\",\n  \"isActive\": true,\n  \"department\": {\n    \"id\": 1\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/courses",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "courses"]
+						},
+						"description": "Create new course. Requires ADMIN role."
+					},
+					"response": []
+				}
+			],
+			"description": "Course management endpoints (Admin only)"
+		},
+		{
+			"name": "Rooms (Admin)",
+			"item": [
+				{
+					"name": "Create Room",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"CS Lab 1\",\n  \"roomNumber\": \"CS-101\",\n  \"capacity\": 60,\n  \"roomType\": \"LAB\",\n  \"hasProjector\": true,\n  \"hasAc\": true,\n  \"equipment\": \"60 computers, projector, whiteboard\",\n  \"isActive\": true,\n  \"department\": {\n    \"id\": 1\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/rooms",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "rooms"]
+						},
+						"description": "Create new room/classroom. Requires ADMIN role."
+					},
+					"response": []
+				}
+			],
+			"description": "Room/Classroom management endpoints (Admin only)"
+		},
+		{
+			"name": "Academic Years (Admin)",
+			"item": [
+				{
+					"name": "Create Academic Year",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"yearName\": \"2024-25\",\n  \"startDate\": \"2024-07-01\",\n  \"endDate\": \"2025-06-30\",\n  \"isCurrent\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/academic-years",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "academic-years"]
+						},
+						"description": "Create new academic year. Requires ADMIN role."
+					},
+					"response": []
+				}
+			],
+			"description": "Academic year management endpoints (Admin only)"
+		},
+		{
+			"name": "Divisions (Admin)",
+			"item": [
+				{
+					"name": "Create Division",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"A\",\n  \"year\": 2,\n  \"branch\": \"Computer Science\",\n  \"totalStudents\": 60,\n  \"isActive\": true,\n  \"department\": {\n    \"id\": 1\n  },\n  \"academicYear\": {\n    \"id\": 1\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/divisions",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "divisions"]
+						},
+						"description": "Create new division/class. Requires ADMIN role."
+					},
+					"response": []
+				}
+			],
+			"description": "Division/Class management endpoints (Admin only)"
+		}
+	]
+}

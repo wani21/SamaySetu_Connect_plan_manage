@@ -11,5 +11,11 @@ import com.College.timetable.Entity.TeacherEntity;
 public interface Teacher_Repo extends JpaRepository<TeacherEntity, Long> {
 
     Optional<TeacherEntity> findByEmail(String email);
+    
+    Optional<TeacherEntity> findByEmployeeId(String employeeId);
+    
+    Optional<TeacherEntity> findByVerificationToken(String token);
+    
+    Optional<TeacherEntity> findByPasswordResetToken(String token);
 
 }
