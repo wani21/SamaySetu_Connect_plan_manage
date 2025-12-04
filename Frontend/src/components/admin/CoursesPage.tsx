@@ -6,12 +6,15 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { courseAPI, departmentAPI } from '../../services/api';
 import { Modal } from '../common/Modal';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export const CoursesPage: React.FC = () => {
   const [courses, setCourses] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -23,6 +26,11 @@ export const CoursesPage: React.FC = () => {
     description: '',
   });
   const [errors, setErrors] = useState<any>({});
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterSemester, setFilterSemester] = useState('');
 
   useEffect(() => {
     fetchCourses();
@@ -30,20 +38,57 @@ export const CoursesPage: React.FC = () => {
   }, []);
 
   const fetchCourses = async () => {
-    // Mock data
-    setCourses([
-      { id: 1, name: 'Data Structures', code: 'CS301', courseType: 'theory', credits: 4, hoursPerWeek: 4, semester: 3, department: { name: 'Computer Science' } },
-      { id: 2, name: 'Database Lab', code: 'CS302L', courseType: 'lab', credits: 2, hoursPerWeek: 4, semester: 3, department: { name: 'Computer Science' } },
-    ]);
+    try {
+      const response = await courseAPI.getAll();
+      setCourses(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      toast.error('Failed to fetch courses');
+      console.error(error);
+      setCourses([]);
+    }
   };
 
   const fetchDepartments = async () => {
     try {
       const response = await departmentAPI.getAll();
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to fetch departments');
+      setDepartments([]);
     }
+  };
+
+  const handleEdit = (course: any) => {
+    setEditingCourse(course);
+    setIsEditMode(true);
+    const semesterNum = course.semester.replace('SEM_', '');
+    setFormData({
+      name: course.name,
+      code: course.code,
+      courseType: course.courseType.toLowerCase(),
+      credits: course.credits.toString(),
+      hoursPerWeek: course.hoursPerWeek.toString(),
+      departmentId: course.department.id.toString(),
+      semester: semesterNum,
+      description: course.description || '',
+    });
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      code: '',
+      courseType: 'theory',
+      credits: '',
+      hoursPerWeek: '',
+      departmentId: '',
+      semester: '1',
+      description: '',
+    });
+    setEditingCourse(null);
+    setIsEditMode(false);
+    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,32 +108,69 @@ export const CoursesPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await courseAPI.create({
-        ...formData,
+      const courseData = {
+        name: formData.name,
+        code: formData.code,
+        courseType: formData.courseType.toUpperCase(),
         credits: parseInt(formData.credits),
         hoursPerWeek: parseInt(formData.hoursPerWeek),
-        semester: parseInt(formData.semester),
-        departmentId: parseInt(formData.departmentId),
-      });
-      toast.success('Course created successfully!');
+        semester: `SEM_${formData.semester}`,
+        description: formData.description || null,
+        department: {
+          id: parseInt(formData.departmentId)
+        },
+      };
+
+      if (isEditMode && editingCourse) {
+        await courseAPI.update(editingCourse.id, courseData);
+        toast.success('Course updated successfully!');
+      } else {
+        await courseAPI.create(courseData);
+        toast.success('Course created successfully!');
+      }
+
       setShowModal(false);
-      setFormData({
-        name: '',
-        code: '',
-        courseType: 'theory',
-        credits: '',
-        hoursPerWeek: '',
-        departmentId: '',
-        semester: '1',
-        description: '',
-      });
+      resetForm();
       fetchCourses();
     } catch (error: any) {
-      toast.error(error.response?.data || 'Failed to create course');
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Course operation error:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${name}?`)) {
+      return;
+    }
+
+    try {
+      await courseAPI.delete(id);
+      toast.success('Course deleted successfully!');
+      fetchCourses();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Course deletion error:', error);
+    }
+  };
+
+  // Filter courses based on search and filters
+  const filteredCourses = courses.filter((course) => {
+    const matchesSearch = searchQuery === '' || 
+      course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      course.code.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesDepartment = filterDepartment === '' || 
+      course.department.id.toString() === filterDepartment;
+    
+    const matchesSemester = filterSemester === '' || 
+      course.semester === `SEM_${filterSemester}`;
+    
+    return matchesSearch && matchesDepartment && matchesSemester;
+  });
 
   return (
     <div>
@@ -100,20 +182,109 @@ export const CoursesPage: React.FC = () => {
         </div>
         <Button
           variant="primary"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowModal(true);
+          }}
           className="flex items-center gap-2"
         >
           <FiPlus /> Add Course
         </Button>
       </div>
 
+      {/* Filters */}
+      <Card className="mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Input
+              label="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name or code..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Filter by Department
+            </label>
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="input-field"
+            >
+              <option value="">All Departments</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Filter by Semester
+            </label>
+            <select
+              value={filterSemester}
+              onChange={(e) => setFilterSemester(e.target.value)}
+              className="input-field"
+            >
+              <option value="">All Semesters</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                <option key={sem} value={sem}>
+                  Semester {sem}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {(searchQuery || filterDepartment || filterSemester) && (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-gray-600">
+              Showing {filteredCourses.length} of {courses.length} courses
+            </span>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setFilterDepartment('');
+                setFilterSemester('');
+              }}
+              className="text-primary-600 hover:text-primary-700 font-medium"
+            >
+              Clear Filters
+            </button>
+          </div>
+        )}
+      </Card>
+
       {/* Courses Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map((course) => (
+      {filteredCourses.length === 0 ? (
+        <Card>
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">
+              {courses.length === 0 ? 'No courses found. Create your first course to get started.' : 'No courses match your filters.'}
+            </p>
+            {courses.length > 0 && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilterDepartment('');
+                  setFilterSemester('');
+                }}
+                className="mt-4 text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredCourses.map((course) => (
           <Card key={course.id} hover>
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${course.courseType === 'lab' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                <div className={`p-2 rounded-lg ${course.courseType === 'LAB' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
                   <FiBook size={20} />
                 </div>
                 <div>
@@ -122,10 +293,17 @@ export const CoursesPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                <button 
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  onClick={() => handleEdit(course)}
+                  title="Edit"
+                >
                   <FiEdit2 size={18} />
                 </button>
-                <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                <button 
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => handleDelete(course.id, course.name)}
+                >
                   <FiTrash2 size={18} />
                 </button>
               </div>
@@ -134,9 +312,9 @@ export const CoursesPage: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-gray-600">Type:</span>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  course.courseType === 'lab' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                  course.courseType === 'LAB' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
                 }`}>
-                  {course.courseType.toUpperCase()}
+                  {course.courseType}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -157,14 +335,18 @@ export const CoursesPage: React.FC = () => {
               </div>
             </div>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {/* Add Course Modal */}
+      {/* Add/Edit Course Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Course"
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={isEditMode ? "Edit Course" : "Add New Course"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -304,7 +486,7 @@ export const CoursesPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              Create Course
+              {isEditMode ? 'Update Course' : 'Create Course'}
             </Button>
           </div>
         </form>

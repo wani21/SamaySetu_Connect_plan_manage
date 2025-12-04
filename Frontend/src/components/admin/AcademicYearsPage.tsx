@@ -6,11 +6,14 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { academicYearAPI } from '../../services/api';
 import { Modal } from '../common/Modal';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export const AcademicYearsPage: React.FC = () => {
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [editingYear, setEditingYear] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
     yearName: '',
     startDate: '',
@@ -24,11 +27,36 @@ export const AcademicYearsPage: React.FC = () => {
   }, []);
 
   const fetchAcademicYears = async () => {
-    // Mock data for now
-    setAcademicYears([
-      { id: 1, yearName: '2024-25', startDate: '2024-07-01', endDate: '2025-06-30', isCurrent: true },
-      { id: 2, yearName: '2023-24', startDate: '2023-07-01', endDate: '2024-06-30', isCurrent: false },
-    ]);
+    try {
+      const response = await academicYearAPI.getAll();
+      console.log('Academic Years API Response:', response);
+      console.log('Academic Years Data:', response.data);
+      console.log('Is Array?', Array.isArray(response.data));
+      setAcademicYears(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to fetch academic years:', error);
+      toast.error('Failed to fetch academic years');
+      setAcademicYears([]); // Set empty array on error
+    }
+  };
+
+  const handleEdit = (year: any) => {
+    setEditingYear(year);
+    setIsEditMode(true);
+    setFormData({
+      yearName: year.yearName,
+      startDate: year.startDate.split('T')[0],
+      endDate: year.endDate.split('T')[0],
+      isCurrent: year.isCurrent,
+    });
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({ yearName: '', startDate: '', endDate: '', isCurrent: false });
+    setEditingYear(null);
+    setIsEditMode(false);
+    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,15 +78,38 @@ export const AcademicYearsPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await academicYearAPI.create(formData);
-      toast.success('Academic Year created successfully!');
+      if (isEditMode && editingYear) {
+        await academicYearAPI.update(editingYear.id, formData);
+        toast.success('Academic Year updated successfully!');
+      } else {
+        await academicYearAPI.create(formData);
+        toast.success('Academic Year created successfully!');
+      }
       setShowModal(false);
-      setFormData({ yearName: '', startDate: '', endDate: '', isCurrent: false });
+      resetForm();
       fetchAcademicYears();
     } catch (error: any) {
-      toast.error(error.response?.data || 'Failed to create academic year');
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Academic year operation error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number, yearName: string) => {
+    if (!window.confirm(`Are you sure you want to delete academic year ${yearName}?`)) {
+      return;
+    }
+
+    try {
+      await academicYearAPI.delete(id);
+      toast.success('Academic year deleted successfully!');
+      fetchAcademicYears();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Academic year deletion error:', error);
     }
   };
 
@@ -72,7 +123,10 @@ export const AcademicYearsPage: React.FC = () => {
         </div>
         <Button
           variant="primary"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowModal(true);
+          }}
           className="flex items-center gap-2"
         >
           <FiPlus /> Add Academic Year
@@ -81,7 +135,12 @@ export const AcademicYearsPage: React.FC = () => {
 
       {/* Academic Years Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {academicYears.map((year) => (
+        {academicYears.length === 0 ? (
+          <div className="col-span-full text-center py-12 text-gray-500">
+            No academic years found. Create your first academic year to get started.
+          </div>
+        ) : (
+          academicYears.map((year) => (
           <Card key={year.id} hover className={year.isCurrent ? 'border-2 border-green-500' : ''}>
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center gap-2">
@@ -96,10 +155,17 @@ export const AcademicYearsPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                <button 
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  onClick={() => handleEdit(year)}
+                  title="Edit"
+                >
                   <FiEdit2 size={18} />
                 </button>
-                <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                <button 
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => handleDelete(year.id, year.yearName)}
+                >
                   <FiTrash2 size={18} />
                 </button>
               </div>
@@ -116,14 +182,18 @@ export const AcademicYearsPage: React.FC = () => {
               </p>
             </div>
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
-      {/* Add Academic Year Modal */}
+      {/* Add/Edit Academic Year Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Academic Year"
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={isEditMode ? "Edit Academic Year" : "Add New Academic Year"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
@@ -159,17 +229,19 @@ export const AcademicYearsPage: React.FC = () => {
             error={errors.endDate}
           />
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isCurrent"
-              checked={formData.isCurrent}
-              onChange={(e) => setFormData({ ...formData, isCurrent: e.target.checked })}
-              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-            />
-            <label htmlFor="isCurrent" className="text-sm text-gray-700">
-              Set as current academic year
-            </label>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isCurrent"
+                checked={formData.isCurrent}
+                onChange={(e) => setFormData({ ...formData, isCurrent: e.target.checked })}
+                className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+              />
+              <label htmlFor="isCurrent" className="text-sm text-gray-700">
+                Set as current academic year
+              </label>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -187,7 +259,7 @@ export const AcademicYearsPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              Create Academic Year
+              {isEditMode ? 'Update Academic Year' : 'Create Academic Year'}
             </Button>
           </div>
         </form>

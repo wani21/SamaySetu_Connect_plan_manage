@@ -14,6 +14,7 @@ import lombok.Data;
 
 @Entity
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class AcadamicYear {
 	
 //	id INT PRIMARY KEY AUTO_INCREMENT,

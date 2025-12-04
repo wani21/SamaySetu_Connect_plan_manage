@@ -5,11 +5,15 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Modal } from '../common/Modal';
+import { timeSlotAPI } from '../../services/api';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export const TimeSlotsPage: React.FC = () => {
   const [timeSlots, setTimeSlots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
     slotName: '',
     startTime: '',
@@ -23,16 +27,33 @@ export const TimeSlotsPage: React.FC = () => {
   }, []);
 
   const fetchTimeSlots = async () => {
-    // Mock data
-    setTimeSlots([
-      { id: 1, slotName: 'Period 1', startTime: '09:00', endTime: '10:00', durationMinutes: 60, isBreak: false },
-      { id: 2, slotName: 'Period 2', startTime: '10:00', endTime: '11:00', durationMinutes: 60, isBreak: false },
-      { id: 3, slotName: 'Tea Break', startTime: '11:00', endTime: '11:15', durationMinutes: 15, isBreak: true },
-      { id: 4, slotName: 'Period 3', startTime: '11:15', endTime: '12:15', durationMinutes: 60, isBreak: false },
-      { id: 5, slotName: 'Lunch Break', startTime: '12:15', endTime: '01:00', durationMinutes: 45, isBreak: true },
-      { id: 6, slotName: 'Period 4', startTime: '01:00', endTime: '02:00', durationMinutes: 60, isBreak: false },
-      { id: 7, slotName: 'Period 5', startTime: '02:00', endTime: '03:00', durationMinutes: 60, isBreak: false },
-    ]);
+    try {
+      const response = await timeSlotAPI.getAll();
+      setTimeSlots(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      toast.error('Failed to fetch time slots');
+      console.error(error);
+      setTimeSlots([]);
+    }
+  };
+
+  const handleEdit = (slot: any) => {
+    setEditingSlot(slot);
+    setIsEditMode(true);
+    setFormData({
+      slotName: slot.slotName,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isBreak: slot.isBreak,
+    });
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({ slotName: '', startTime: '', endTime: '', isBreak: false });
+    setEditingSlot(null);
+    setIsEditMode(false);
+    setErrors({});
   };
 
   const calculateDuration = (start: string, end: string) => {
@@ -62,15 +83,41 @@ export const TimeSlotsPage: React.FC = () => {
     setIsLoading(true);
     try {
       const duration = calculateDuration(formData.startTime, formData.endTime);
-      // await timeSlotAPI.create({ ...formData, durationMinutes: duration });
-      toast.success('Time slot created successfully!');
+      const slotData = { ...formData, durationMinutes: duration };
+
+      if (isEditMode && editingSlot) {
+        await timeSlotAPI.update(editingSlot.id, slotData);
+        toast.success('Time slot updated successfully!');
+      } else {
+        await timeSlotAPI.create(slotData);
+        toast.success('Time slot created successfully!');
+      }
+
       setShowModal(false);
-      setFormData({ slotName: '', startTime: '', endTime: '', isBreak: false });
+      resetForm();
       fetchTimeSlots();
     } catch (error: any) {
-      toast.error(error.response?.data || 'Failed to create time slot');
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Time slot operation error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number, slotName: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${slotName}?`)) {
+      return;
+    }
+
+    try {
+      await timeSlotAPI.delete(id);
+      toast.success('Time slot deleted successfully!');
+      fetchTimeSlots();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Time slot deletion error:', error);
     }
   };
 
@@ -92,7 +139,10 @@ export const TimeSlotsPage: React.FC = () => {
         </div>
         <Button
           variant="primary"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowModal(true);
+          }}
           className="flex items-center gap-2"
         >
           <FiPlus /> Add Time Slot
@@ -101,7 +151,7 @@ export const TimeSlotsPage: React.FC = () => {
 
       {/* Time Slots List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {timeSlots.map((slot, index) => (
+        {timeSlots.map((slot) => (
           <Card key={slot.id} hover className={slot.isBreak ? 'border-l-4 border-orange-500' : 'border-l-4 border-primary-500'}>
             <div className="flex justify-between items-start">
               <div className="flex items-start gap-3 flex-1">
@@ -128,10 +178,17 @@ export const TimeSlotsPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2 ml-2">
-                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                <button 
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  onClick={() => handleEdit(slot)}
+                  title="Edit"
+                >
                   <FiEdit2 size={16} />
                 </button>
-                <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                <button 
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => handleDelete(slot.id, slot.slotName)}
+                >
                   <FiTrash2 size={16} />
                 </button>
               </div>
@@ -144,7 +201,7 @@ export const TimeSlotsPage: React.FC = () => {
       <Card className="mt-6">
         <h3 className="text-xl font-bold text-gray-900 mb-4">Daily Schedule Preview</h3>
         <div className="space-y-2">
-          {timeSlots.map((slot, index) => (
+          {timeSlots.map((slot) => (
             <div key={slot.id} className="flex items-center gap-4">
               <div className="w-32 text-sm font-medium text-gray-700">
                 {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
@@ -160,11 +217,14 @@ export const TimeSlotsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Add Time Slot Modal */}
+      {/* Add/Edit Time Slot Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Time Slot"
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={isEditMode ? "Edit Time Slot" : "Add New Time Slot"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
@@ -238,7 +298,7 @@ export const TimeSlotsPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              Create Time Slot
+              {isEditMode ? 'Update Time Slot' : 'Create Time Slot'}
             </Button>
           </div>
         </form>

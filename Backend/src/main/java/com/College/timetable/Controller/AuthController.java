@@ -95,20 +95,28 @@ public class AuthController {
 	
 	@PostMapping("/login")
 	public AuthResponse login(@RequestBody AuthRequest request) {
-		authenticate(request.getEmail(),request.getPassword());
-		final UserDetails user=teacherservice.loadUserByUsername(request.getEmail());
-		final String token=jwtutil.generateToken(user);
-		String role=teacherservice.getByRole(request.getEmail());
-		return new AuthResponse(request.getEmail(),token,role);
+		try {
+			// First check user status (email verification, approval, etc.)
+			final UserDetails user = teacherservice.loadUserByUsername(request.getEmail());
+			
+			// Then authenticate credentials
+			authenticate(request.getEmail(), request.getPassword());
+			
+			// Generate token and return response
+			final String token = jwtutil.generateToken(user);
+			String role = teacherservice.getByRole(request.getEmail());
+			return new AuthResponse(request.getEmail(), token, role);
+		} catch (RuntimeException e) {
+			// Preserve specific error messages from TeacherService
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+		}
 	}
 	
-	private void authenticate(String email,String password) {
+	private void authenticate(String email, String password) {
 		try {
 			authManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
-		}
-		catch(Exception e) {
+		} catch (Exception e) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email or password is incorrect");
-
 		}
 	}
 

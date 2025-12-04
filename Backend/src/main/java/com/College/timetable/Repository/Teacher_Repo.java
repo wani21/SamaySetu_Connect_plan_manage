@@ -17,5 +17,8 @@ public interface Teacher_Repo extends JpaRepository<TeacherEntity, Long> {
     Optional<TeacherEntity> findByVerificationToken(String token);
     
     Optional<TeacherEntity> findByPasswordResetToken(String token);
+    
+    // Find teachers pending approval (email verified but not approved)
+    java.util.List<TeacherEntity> findByIsApprovedAndIsEmailVerified(Boolean isApproved, Boolean isEmailVerified);
 
 }

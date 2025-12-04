@@ -113,7 +113,8 @@ public class EmailService {
             helper.setSubject("Welcome to SamaySetu!");
             helper.setText("Dear " + name + ",\n\n" +
                     "Your email has been successfully verified!\n\n" +
-                    "You can now log in to SamaySetu Timetable Management System.\n\n" +
+                    "Your account is pending admin approval. Please wait for approval.\n\n" +
+                    "Once approved, You can log in to SamaySetu Timetable Management System.\n\n" +
                     "Best regards,\n" +
                     "SamaySetu Team\n" +
                     "MIT Academy of Engineering, Alandi(D), Pune");
@@ -127,10 +128,57 @@ public class EmailService {
             message.setSubject("Welcome to SamaySetu!");
             message.setText("Dear " + name + ",\n\n" +
                     "Your email has been successfully verified!\n\n" +
-                    "You can now log in to SamaySetu Timetable Management System.\n\n" +
+                    "Your account is pending admin approval. Please wait for approval.\n\n" +
+                    "Once approved, You can log in to SamaySetu Timetable Management System.\n\n" +
                     "Best regards,\n" +
                     "SamaySetu Team");
             mailSender.send(message);
+        }
+    }
+    
+    public void sendApprovalEmail(String toEmail, String name) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail);
+            helper.setSubject("SamaySetu - Account Approved!");
+            helper.setText("Dear " + name + ",\n\n" +
+                    "Great news! Your SamaySetu account has been approved by the administrator.\n\n" +
+                    "You can now login and access the timetable management system:\n" +
+                    baseUrl + "/login\n\n" +
+                    "Welcome to SamaySetu!\n\n" +
+                    "Best regards,\n" +
+                    "SamaySetu Team\n" +
+                    "MIT Academy of Engineering, Alandi(D), Pune");
+            
+            mailSender.send(mimeMessage);
+        } catch (Exception e) {
+            System.err.println("Failed to send approval email: " + e.getMessage());
+        }
+    }
+    
+    public void sendRejectionEmail(String toEmail, String name, String reason) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail);
+            helper.setSubject("SamaySetu - Account Application Status");
+            helper.setText("Dear " + name + ",\n\n" +
+                    "Thank you for your interest in SamaySetu Timetable Management System.\n\n" +
+                    "Unfortunately, your account application has not been approved at this time.\n\n" +
+                    "Reason: " + reason + "\n\n" +
+                    "If you believe this is an error or have questions, please contact the administrator.\n\n" +
+                    "Best regards,\n" +
+                    "SamaySetu Team\n" +
+                    "MIT Academy of Engineering, Alandi(D), Pune");
+            
+            mailSender.send(mimeMessage);
+        } catch (Exception e) {
+            System.err.println("Failed to send rejection email: " + e.getMessage());
         }
     }
 }

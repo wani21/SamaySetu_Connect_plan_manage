@@ -23,10 +23,12 @@ C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\Colleg
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Entity\TeacherEntity.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Entity\TimeSlot.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Entity\TimetableEntry.java
+C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Exception\GlobalExceptionHandler.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Filter\JWTRequestFilter.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\AuthRequest.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\AuthResponse.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\ForgotPasswordRequest.java
+C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\ProfileUpdateRequest.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\RegisterRequest.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\IO\ResetPasswordRequest.java
 C:\Users\abhij\Desktop\Study\Projects\SamaySetu\Backend\src\main\java\com\College\timetable\Repository\Acadamic_repo.java

@@ -163,10 +163,10 @@ CS-101
 ```
 
 ### Year Mapping
-- **FE** = First Year (year = 1)
-- **SE** = Second Year (year = 2)
-- **TE** = Third Year (year = 3)
-- **BE** = Fourth Year (year = 4)
+- **FY** = First Year (year = 1)
+- **SY** = Second Year (year = 2)
+- **TY** = Third Year (year = 3)
+- **BTech** = Fourth Year (year = 4)
 
 ---
 

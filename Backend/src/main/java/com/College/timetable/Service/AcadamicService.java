@@ -17,6 +17,13 @@ public class AcadamicService {
 	private Acadamic_repo acadamy;
 
 	public AcademicYear addAcadamic(AcademicYear aca) {
+		// If this academic year is being set as current, unset any existing current year
+		if (aca.getIsCurrent() != null && aca.getIsCurrent()) {
+			AcademicYear existingCurrent = acadamy.findByIsCurrent(true);
+			if (existingCurrent != null) {
+				throw new IllegalArgumentException("An academic year '" + existingCurrent.getYearName() + "' is already set as current. Please unset it first before setting a new current year.");
+			}
+		}
 		return acadamy.save(aca);
 	}
 	
@@ -31,6 +38,15 @@ public class AcadamicService {
 	
 	public AcademicYear update(Long id, AcademicYear aca) {
 		AcademicYear existing = getById(id);
+		
+		// If trying to set this as current, check if another year is already current
+		if (aca.getIsCurrent() != null && aca.getIsCurrent() && !existing.getIsCurrent()) {
+			AcademicYear existingCurrent = acadamy.findByIsCurrent(true);
+			if (existingCurrent != null && !existingCurrent.getId().equals(id)) {
+				throw new IllegalArgumentException("Academic year '" + existingCurrent.getYearName() + "' is already set as current. Please unset it first before setting '" + aca.getYearName() + "' as current.");
+			}
+		}
+		
 		existing.setYearName(aca.getYearName());
 		existing.setStartDate(aca.getStartDate());
 		existing.setEndDate(aca.getEndDate());

@@ -31,6 +31,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Division {
 	
 	@Id
@@ -78,8 +79,10 @@ public class Division {
 	private AcademicYear academicYear;
 	
 	@OneToMany(mappedBy = "division", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<TimetableEntry> timetableEntries;
 	
 	@OneToMany(mappedBy = "division", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<Student> students;
 }

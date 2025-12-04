@@ -271,6 +271,66 @@
 			"name": "Teachers",
 			"item": [
 				{
+					"name": "Get My Profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/teachers/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "teachers", "profile"]
+						},
+						"description": "Get current logged-in user's profile. Requires authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Update My Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Name\",\n  \"phone\": \"9876543210\",\n  \"specialization\": \"AI & Machine Learning\",\n  \"weeklyHoursLimit\": 30\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/teachers/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "teachers", "profile"]
+						},
+						"description": "Update current logged-in user's profile. Requires authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Current Name\",\n  \"phone\": \"9876543210\",\n  \"specialization\": \"Computer Science\",\n  \"weeklyHoursLimit\": 25,\n  \"password\": \"newPassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/teachers/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "teachers", "profile"]
+						},
+						"description": "Change password by including password field in profile update. Requires authentication."
+					},
+					"response": []
+				},
+				{
 					"name": "Get All Teachers",
 					"request": {
 						"method": "GET",

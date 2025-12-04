@@ -26,11 +26,25 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 403 || error.response?.status === 401) {
-      // Clear all auth data
+    // Only logout on authentication/authorization errors, not validation errors
+    if (error.response?.status === 401) {
+      // 401 Unauthorized - token expired or invalid
       localStorage.removeItem('jwt_token');
       localStorage.removeItem('auth-storage');
       window.location.href = '/login';
+    } else if (error.response?.status === 403) {
+      // 403 Forbidden - check if it's actually an auth issue or validation error
+      const errorMessage = error.response?.data?.message || error.response?.data || '';
+      const isAuthError = typeof errorMessage === 'string' && 
+        (errorMessage.toLowerCase().includes('token') || 
+         errorMessage.toLowerCase().includes('unauthorized') ||
+         errorMessage.toLowerCase().includes('forbidden'));
+      
+      if (isAuthError) {
+        localStorage.removeItem('jwt_token');
+        localStorage.removeItem('auth-storage');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -49,6 +63,10 @@ export const authAPI = {
 // Teacher API
 export const teacherAPI = {
   create: (data: any) => api.post('/api/teachers', data),
+  getProfile: () => api.get('/api/teachers/profile'),
+  updateProfile: (data: any) => api.put('/api/teachers/profile', data),
+  getAll: () => api.get('/api/teachers'),
+  getById: (id: number) => api.get(`/api/teachers/${id}`),
 };
 
 // Department API (Admin)
@@ -60,13 +78,16 @@ export const departmentAPI = {
   delete: (id: number) => api.delete(`/admin/api/departments/${id}`),
 };
 
-// Teacher API (Admin)
+// Teacher API (Admin) - uses same endpoints as regular teacher API
 export const teacherAdminAPI = {
-  getAll: () => api.get('/admin/api/teachers'),
-  getById: (id: number) => api.get(`/admin/api/teachers/${id}`),
-  create: (data: any) => api.post('/admin/api/teachers', data),
-  update: (id: number, data: any) => api.put(`/admin/api/teachers/${id}`, data),
-  delete: (id: number) => api.delete(`/admin/api/teachers/${id}`),
+  getAll: () => api.get('/api/teachers'),
+  getById: (id: number) => api.get(`/api/teachers/${id}`),
+  create: (data: any) => api.post('/api/teachers', data),
+  update: (id: number, data: any) => api.put(`/api/teachers/${id}`, data),
+  delete: (id: number) => api.delete(`/api/teachers/${id}`),
+  getPendingApprovals: () => api.get('/api/teachers/pending-approvals'),
+  approve: (id: number) => api.post(`/api/teachers/${id}/approve`),
+  reject: (id: number, reason?: string) => api.post(`/api/teachers/${id}/reject`, reason),
 };
 
 // Course API (Admin)
@@ -115,6 +136,11 @@ export const timeSlotAPI = {
   update: (id: number, data: any) => api.put(`/admin/api/time-slots/${id}`, data),
   delete: (id: number) => api.delete(`/admin/api/time-slots/${id}`),
   getActive: () => api.get('/admin/api/time-slots/active'),
+};
+
+// Time Slot API (Public - for teachers)
+export const timeSlotPublicAPI = {
+  getAll: () => api.get('/api/time-slots'),
 };
 
 export default api;

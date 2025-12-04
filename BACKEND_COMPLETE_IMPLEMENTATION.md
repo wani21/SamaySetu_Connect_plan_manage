@@ -219,7 +219,7 @@ Room Number
 [Year Badge] [Division Badge]
 ```
 
-Example: `SE` `Div A` for Second Year Division A
+Example: `SY` `Div A` for Second Year Division A
 
 ---
 

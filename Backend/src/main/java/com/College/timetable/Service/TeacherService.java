@@ -76,8 +76,9 @@ public class TeacherService implements UserDetailsService{
 		newTeacher.setSpecialization(request.getSpecialization());
 		newTeacher.setPassword(passEncode.encode(request.getPassword()));
 		newTeacher.setRole("TEACHER");
-		newTeacher.setIsActive(false); // Inactive until email verified
+		newTeacher.setIsActive(false); // Inactive until email verified and admin approved
 		newTeacher.setIsEmailVerified(false);
+		newTeacher.setIsApproved(false); // Requires admin approval after email verification
 		newTeacher.setVerificationToken(verificationToken);
 		newTeacher.setVerificationTokenExpiry(Timestamp.valueOf(LocalDateTime.now().plusHours(24)));
 		newTeacher.setWeeklyHoursLimit(25);
@@ -109,9 +110,9 @@ public class TeacherService implements UserDetailsService{
 			throw new RuntimeException("Verification token has expired");
 		}
 		
-		// Verify email
+		// Verify email - but keep inactive until admin approves
 		teacherEntity.setIsEmailVerified(true);
-		teacherEntity.setIsActive(true);
+		teacherEntity.setIsActive(false); // Still inactive - waiting for admin approval
 		teacherEntity.setVerificationToken(null);
 		teacherEntity.setVerificationTokenExpiry(null);
 		
@@ -172,6 +173,11 @@ public class TeacherService implements UserDetailsService{
 			throw new RuntimeException("Email not verified. Please check your email for verification link.");
 		}
 		
+		// Check if approved by admin
+		if (!teach.getIsApproved()) {
+			throw new RuntimeException("Your account is pending admin approval. Please wait for approval.");
+		}
+		
 		// Check if account is active
 		if (!teach.getIsActive()) {
 			throw new RuntimeException("Account is not active. Please contact administrator.");
@@ -205,6 +211,30 @@ public class TeacherService implements UserDetailsService{
 			.orElseThrow(() -> new EntityNotFoundException("Teacher not found with email: " + email));
 	}
 	
+	public TeacherEntity updateProfile(Long id, com.College.timetable.IO.ProfileUpdateRequest request) {
+		TeacherEntity existing = getById(id);
+		existing.setName(request.getName());
+		existing.setEmployeeId(request.getEmployeeId());
+		existing.setEmail(request.getEmail());
+		existing.setPhone(request.getPhone());
+		existing.setWeeklyHoursLimit(request.getWeeklyHoursLimit());
+		existing.setSpecialization(request.getSpecialization());
+		
+		// Update password only if provided
+		if (request.getPassword() != null && !request.getPassword().isEmpty()) {
+			existing.setPassword(passEncode.encode(request.getPassword()));
+		}
+		
+		// Update department if provided
+		if (request.getDepartmentId() != null) {
+			DepartmentEntity depart = department.findById(request.getDepartmentId())
+				.orElseThrow(() -> new EntityNotFoundException("Department not found"));
+			existing.setDepartment(depart);
+		}
+		
+		return teacher.save(existing);
+	}
+	
 	public TeacherEntity update(Long id, TeacherEntity teach) {
 		TeacherEntity existing = getById(id);
 		existing.setName(teach.getName());
@@ -235,6 +265,51 @@ public class TeacherService implements UserDetailsService{
 			throw new EntityNotFoundException("Teacher not found with id: " + id);
 		}
 		teacher.deleteById(id);
+	}
+	
+	// Admin approval methods
+	public java.util.List<TeacherEntity> getPendingApprovals() {
+		return teacher.findByIsApprovedAndIsEmailVerified(false, true);
+	}
+	
+	public TeacherEntity approveTeacher(Long id) {
+		TeacherEntity teacherEntity = getById(id);
+		
+		if (!teacherEntity.getIsEmailVerified()) {
+			throw new RuntimeException("Cannot approve teacher - email not verified");
+		}
+		
+		teacherEntity.setIsApproved(true);
+		teacherEntity.setIsActive(true);
+		
+		TeacherEntity approved = teacher.save(teacherEntity);
+		
+		// Send approval notification email
+		try {
+			emailService.sendApprovalEmail(teacherEntity.getEmail(), teacherEntity.getName());
+		} catch (Exception e) {
+			System.err.println("Failed to send approval email: " + e.getMessage());
+		}
+		
+		return approved;
+	}
+	
+	public TeacherEntity rejectTeacher(Long id, String reason) {
+		TeacherEntity teacherEntity = getById(id);
+		
+		teacherEntity.setIsApproved(false);
+		teacherEntity.setIsActive(false);
+		
+		TeacherEntity rejected = teacher.save(teacherEntity);
+		
+		// Send rejection notification email
+		try {
+			emailService.sendRejectionEmail(teacherEntity.getEmail(), teacherEntity.getName(), reason);
+		} catch (Exception e) {
+			System.err.println("Failed to send rejection email: " + e.getMessage());
+		}
+		
+		return rejected;
 	}
 	
 }

@@ -7,6 +7,7 @@ import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { authAPI } from '../services/api';
 import logo from '../assets/logo.png';
+import bannerVideo from '../assets/banner_video1.mp4';
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
@@ -79,23 +80,74 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl"
+    <div className="h-screen relative overflow-hidden">
+      {/* Full Background Video */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover"
       >
-        <div className="bg-white rounded-2xl shadow-strong p-8">
-          {/* Logo and Header */}
-          <div className="text-center mb-8">
-            <img src={logo} alt="MIT AOE" className="h-16 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-primary-900">Create Account</h1>
-            <p className="text-gray-600 mt-2">Register for SamaySetu</p>
-          </div>
+        <source src={bannerVideo} type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
 
-          {/* Registration Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Content Overlay */}
+      <div className="relative z-10 h-screen flex flex-col lg:flex-row overflow-hidden">
+        
+        {/* Left Side - Branding */}
+        <div className="flex-1 flex flex-col p-8 lg:p-12">
+          {/* Logo at Top Left with Background */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+            className="inline-block mb-8"
+          >
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-3 shadow-lg inline-block">
+              <img src={logo} alt="MIT AOE" className="h-20 lg:h-24 block" />
+            </div>
+          </motion.div>
+
+          {/* Branding Text Higher Up */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="hidden lg:block text-white mt-12"
+          >
+            <h1 className="text-5xl font-bold mb-4 drop-shadow-lg">SamaySetu</h1>
+            <p className="text-2xl mb-2 drop-shadow-md">Timetable Management System</p>
+            <p className="text-xl opacity-90 drop-shadow-md">MIT Academy of Engineering</p>
+          </motion.div>
+        </div>
+
+        {/* Right Side - Registration Form with Transparent Box */}
+        <div className="w-full lg:w-[700px] flex items-center justify-center p-4 lg:p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="w-full max-w-3xl my-4"
+          >
+            {/* Mobile Logo */}
+            <div className="lg:hidden text-center mb-6">
+              <img src={logo} alt="MIT AOE" className="h-16 mx-auto mb-4 drop-shadow-lg" />
+              <h1 className="text-2xl font-bold text-white mb-2 drop-shadow-lg">SamaySetu</h1>
+              <p className="text-white drop-shadow-md">Timetable Management System</p>
+            </div>
+
+            {/* Semi-transparent Registration Box */}
+            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-2xl p-8 border border-white/20 max-h-[90vh] overflow-y-auto">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Create Account</h2>
+                <p className="text-sm text-gray-600 mt-1">Register for SamaySetu</p>
+              </div>
+
+            {/* Registration Form */}
+            <form onSubmit={handleSubmit} className="space-y-3" noValidate>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
                 label="Full Name"
                 type="text"
@@ -104,7 +156,7 @@ export const RegisterPage: React.FC = () => {
                 onChange={handleChange}
                 error={errors.name}
                 icon={<FiUser />}
-                placeholder="John Doe"
+                placeholder="Name"
               />
 
               <Input
@@ -131,7 +183,7 @@ export const RegisterPage: React.FC = () => {
               autoComplete="email"
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
                 label="Phone Number"
                 type="tel"
@@ -154,7 +206,7 @@ export const RegisterPage: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="relative">
                 <Input
                   label="Password"
@@ -225,8 +277,15 @@ export const RegisterPage: React.FC = () => {
               </Link>
             </p>
           </div>
+
+          {/* Footer */}
+          <div className="mt-6 pt-6 border-t border-gray-200 text-center text-xs text-gray-500">
+            <p>© 2025 MIT Academy of Engineering</p>
+          </div>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };

@@ -4,45 +4,114 @@ import toast from 'react-hot-toast';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
-import { divisionAPI, departmentAPI } from '../../services/api';
+import { divisionAPI, departmentAPI, academicYearAPI } from '../../services/api';
 import { Modal } from '../common/Modal';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export const DivisionsPage: React.FC = () => {
   const [divisions, setDivisions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [editingDivision, setEditingDivision] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     year: '1',
     branch: '',
     departmentId: '',
-    academicYearId: '1',
+    academicYearId: '',
     totalStudents: '',
   });
   const [errors, setErrors] = useState<any>({});
+  
+  // Filter states
+  const [filterYear, setFilterYear] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterAcademicYear, setFilterAcademicYear] = useState('');
 
   useEffect(() => {
     fetchDivisions();
     fetchDepartments();
+    fetchAcademicYears();
   }, []);
 
   const fetchDivisions = async () => {
-    // Mock data
-    setDivisions([
-      { id: 1, name: 'A', year: 2, branch: 'Computer Science', totalStudents: 60, department: { name: 'Computer Science' }, academicYear: { yearName: '2024-25' } },
-      { id: 2, name: 'B', year: 2, branch: 'Computer Science', totalStudents: 58, department: { name: 'Computer Science' }, academicYear: { yearName: '2024-25' } },
-      { id: 3, name: 'A', year: 3, branch: 'Information Technology', totalStudents: 55, department: { name: 'Information Technology' }, academicYear: { yearName: '2024-25' } },
-    ]);
+    try {
+      const response = await divisionAPI.getAll();
+      console.log('Divisions API Response:', response);
+      console.log('Divisions Data:', response.data);
+      console.log('Is Array?', Array.isArray(response.data));
+      setDivisions(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to fetch divisions:', error);
+      toast.error('Failed to fetch divisions');
+      setDivisions([]); // Set empty array on error
+    }
   };
 
   const fetchDepartments = async () => {
     try {
       const response = await departmentAPI.getAll();
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to fetch departments');
+      setDepartments([]);
     }
+  };
+
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await academicYearAPI.getAll();
+      const years = Array.isArray(response.data) ? response.data : [];
+      setAcademicYears(years);
+      
+      // Auto-select current academic year if available
+      if (years.length > 0 && !formData.academicYearId) {
+        const currentYear = years.find(year => year.isCurrent);
+        const defaultYearId = currentYear ? currentYear.id : years[0].id;
+        setFormData(prev => ({ ...prev, academicYearId: defaultYearId.toString() }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch academic years');
+      setAcademicYears([]);
+    }
+  };
+
+  const handleEdit = (division: any) => {
+    setEditingDivision(division);
+    setIsEditMode(true);
+    setFormData({
+      name: division.name,
+      year: division.year.toString(),
+      branch: division.branch,
+      departmentId: division.department.id.toString(),
+      academicYearId: division.academicYear.id.toString(),
+      totalStudents: division.totalStudents.toString(),
+    });
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    // Auto-select current academic year or first available
+    let defaultAcademicYearId = '';
+    if (academicYears.length > 0) {
+      const currentYear = academicYears.find(year => year.isCurrent);
+      defaultAcademicYearId = currentYear ? currentYear.id.toString() : academicYears[0].id.toString();
+    }
+
+    setFormData({
+      name: '',
+      year: '1',
+      branch: '',
+      departmentId: '',
+      academicYearId: defaultAcademicYearId,
+      totalStudents: '',
+    });
+    setEditingDivision(null);
+    setIsEditMode(false);
+    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,6 +121,7 @@ export const DivisionsPage: React.FC = () => {
     if (!formData.name) newErrors.name = 'Division name is required';
     if (!formData.branch) newErrors.branch = 'Branch is required';
     if (!formData.departmentId) newErrors.departmentId = 'Department is required';
+    if (!formData.academicYearId) newErrors.academicYearId = 'Academic year is required';
     if (!formData.totalStudents) newErrors.totalStudents = 'Total students is required';
     
     if (Object.keys(newErrors).length > 0) {
@@ -61,37 +131,61 @@ export const DivisionsPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await divisionAPI.create({
-        ...formData,
+      const divisionData = {
+        name: formData.name,
         year: parseInt(formData.year),
-        departmentId: parseInt(formData.departmentId),
-        academicYearId: parseInt(formData.academicYearId),
+        branch: formData.branch,
         totalStudents: parseInt(formData.totalStudents),
-      });
-      toast.success('Division created successfully!');
+        department: {
+          id: parseInt(formData.departmentId)
+        },
+        academicYear: {
+          id: parseInt(formData.academicYearId)
+        },
+      };
+
+      if (isEditMode && editingDivision) {
+        await divisionAPI.update(editingDivision.id, divisionData);
+        toast.success('Division updated successfully!');
+      } else {
+        await divisionAPI.create(divisionData);
+        toast.success('Division created successfully!');
+      }
+
       setShowModal(false);
-      setFormData({
-        name: '',
-        year: '1',
-        branch: '',
-        departmentId: '',
-        academicYearId: '1',
-        totalStudents: '',
-      });
+      resetForm();
       fetchDivisions();
     } catch (error: any) {
-      toast.error(error.response?.data || 'Failed to create division');
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Division operation error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDelete = async (id: number, name: string, year: number) => {
+    if (!window.confirm(`Are you sure you want to delete division ${getYearLabel(year).split(' ')[0]}-${name}?`)) {
+      return;
+    }
+
+    try {
+      await divisionAPI.delete(id);
+      toast.success('Division deleted successfully!');
+      fetchDivisions();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Division deletion error:', error);
+    }
+  };
+
   const getYearLabel = (year: number) => {
     switch (year) {
-      case 1: return 'FE (First Year)';
-      case 2: return 'SE (Second Year)';
-      case 3: return 'TE (Third Year)';
-      case 4: return 'BE (Final Year)';
+      case 1: return 'FY (First Year)';
+      case 2: return 'SY (Second Year)';
+      case 3: return 'TY (Third Year)';
+      case 4: return 'BTech (Final Year)';
       default: return `Year ${year}`;
     }
   };
@@ -106,6 +200,20 @@ export const DivisionsPage: React.FC = () => {
     }
   };
 
+  // Filter divisions based on filters
+  const filteredDivisions = divisions.filter((division) => {
+    const matchesYear = filterYear === '' || 
+      division.year.toString() === filterYear;
+    
+    const matchesDepartment = filterDepartment === '' || 
+      division.department.id.toString() === filterDepartment;
+    
+    const matchesAcademicYear = filterAcademicYear === '' || 
+      division.academicYear.id.toString() === filterAcademicYear;
+    
+    return matchesYear && matchesDepartment && matchesAcademicYear;
+  });
+
   return (
     <div>
       {/* Header */}
@@ -116,16 +224,113 @@ export const DivisionsPage: React.FC = () => {
         </div>
         <Button
           variant="primary"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowModal(true);
+          }}
           className="flex items-center gap-2"
         >
           <FiPlus /> Add Division
         </Button>
       </div>
 
+      {/* Filters */}
+      <Card className="mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Filter by Year
+            </label>
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+              className="input-field"
+            >
+              <option value="">All Years</option>
+              <option value="1">FY (First Year)</option>
+              <option value="2">SY (Second Year)</option>
+              <option value="3">TY (Third Year)</option>
+              <option value="4">BTech (Final Year)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Filter by Department
+            </label>
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="input-field"
+            >
+              <option value="">All Departments</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Filter by Academic Year
+            </label>
+            <select
+              value={filterAcademicYear}
+              onChange={(e) => setFilterAcademicYear(e.target.value)}
+              className="input-field"
+            >
+              <option value="">All Academic Years</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.yearName} {year.isCurrent ? '(Current)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {(filterYear || filterDepartment || filterAcademicYear) && (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-gray-600">
+              Showing {filteredDivisions.length} of {divisions.length} divisions
+            </span>
+            <button
+              onClick={() => {
+                setFilterYear('');
+                setFilterDepartment('');
+                setFilterAcademicYear('');
+              }}
+              className="text-primary-600 hover:text-primary-700 font-medium"
+            >
+              Clear Filters
+            </button>
+          </div>
+        )}
+      </Card>
+
       {/* Divisions Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {divisions.map((division) => (
+      {filteredDivisions.length === 0 ? (
+        <Card>
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">
+              {divisions.length === 0 ? 'No divisions found. Create your first division to get started.' : 'No divisions match your filters.'}
+            </p>
+            {divisions.length > 0 && (
+              <button
+                onClick={() => {
+                  setFilterYear('');
+                  setFilterDepartment('');
+                  setFilterAcademicYear('');
+                }}
+                className="mt-4 text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredDivisions.map((division) => (
           <Card key={division.id} hover>
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-start gap-3">
@@ -140,10 +345,17 @@ export const DivisionsPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                <button 
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  onClick={() => handleEdit(division)}
+                  title="Edit"
+                >
                   <FiEdit2 size={18} />
                 </button>
-                <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                <button 
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => handleDelete(division.id, division.name, division.year)}
+                >
                   <FiTrash2 size={18} />
                 </button>
               </div>
@@ -169,14 +381,18 @@ export const DivisionsPage: React.FC = () => {
               </div>
             </div>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {/* Add Division Modal */}
+      {/* Add/Edit Division Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Division"
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={isEditMode ? "Edit Division" : "Add New Division"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -201,10 +417,10 @@ export const DivisionsPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, year: e.target.value })}
                 className="input-field"
               >
-                <option value="1">FE (First Year)</option>
-                <option value="2">SE (Second Year)</option>
-                <option value="3">TE (Third Year)</option>
-                <option value="4">BE (Final Year)</option>
+                <option value="1">FY (First Year)</option>
+                <option value="2">SY (Second Year)</option>
+                <option value="3">TY (Third Year)</option>
+                <option value="4">BTech (Final Year)</option>
               </select>
             </div>
           </div>
@@ -250,12 +466,22 @@ export const DivisionsPage: React.FC = () => {
             </label>
             <select
               value={formData.academicYearId}
-              onChange={(e) => setFormData({ ...formData, academicYearId: e.target.value })}
-              className="input-field"
+              onChange={(e) => {
+                setFormData({ ...formData, academicYearId: e.target.value });
+                setErrors({ ...errors, academicYearId: '' });
+              }}
+              className={`input-field ${errors.academicYearId ? 'input-error' : ''}`}
             >
-              <option value="1">2024-25 (Current)</option>
-              <option value="2">2023-24</option>
+              <option value="">Select Academic Year</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.yearName} {year.isCurrent ? '(Current)' : ''}
+                </option>
+              ))}
             </select>
+            {errors.academicYearId && (
+              <p className="mt-1 text-sm text-red-600">{errors.academicYearId}</p>
+            )}
           </div>
 
           <Input
@@ -286,7 +512,7 @@ export const DivisionsPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              Create Division
+              {isEditMode ? 'Update Division' : 'Create Division'}
             </Button>
           </div>
         </form>

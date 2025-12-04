@@ -6,11 +6,14 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { departmentAPI } from '../../services/api';
 import { Modal } from '../common/Modal';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export const DepartmentsPage: React.FC = () => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [editingDept, setEditingDept] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -25,10 +28,29 @@ export const DepartmentsPage: React.FC = () => {
   const fetchDepartments = async () => {
     try {
       const response = await departmentAPI.getAll();
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       toast.error('Failed to fetch departments');
+      setDepartments([]);
     }
+  };
+
+  const handleEdit = (dept: any) => {
+    setEditingDept(dept);
+    setIsEditMode(true);
+    setFormData({
+      name: dept.name,
+      code: dept.code,
+      headOfDepartment: dept.headOfDepartment || '',
+    });
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({ name: '', code: '', headOfDepartment: '' });
+    setEditingDept(null);
+    setIsEditMode(false);
+    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,15 +67,38 @@ export const DepartmentsPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await departmentAPI.create(formData);
-      toast.success('Department created successfully!');
+      if (isEditMode && editingDept) {
+        await departmentAPI.update(editingDept.id, formData);
+        toast.success('Department updated successfully!');
+      } else {
+        await departmentAPI.create(formData);
+        toast.success('Department created successfully!');
+      }
       setShowModal(false);
-      setFormData({ name: '', code: '', headOfDepartment: '' });
+      resetForm();
       fetchDepartments();
     } catch (error: any) {
-      toast.error(error.response?.data || 'Failed to create department');
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Department operation error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${name}?`)) {
+      return;
+    }
+
+    try {
+      await departmentAPI.delete(id);
+      toast.success('Department deleted successfully!');
+      fetchDepartments();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage, { duration: 5000 });
+      console.error('Department deletion error:', error);
     }
   };
 
@@ -67,7 +112,10 @@ export const DepartmentsPage: React.FC = () => {
         </div>
         <Button
           variant="primary"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowModal(true);
+          }}
           className="flex items-center gap-2"
         >
           <FiPlus /> Add Department
@@ -84,10 +132,17 @@ export const DepartmentsPage: React.FC = () => {
                 <p className="text-sm text-gray-600">Code: {dept.code}</p>
               </div>
               <div className="flex gap-2">
-                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                <button 
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  onClick={() => handleEdit(dept)}
+                  title="Edit"
+                >
                   <FiEdit2 size={18} />
                 </button>
-                <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                <button 
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => handleDelete(dept.id, dept.name)}
+                >
                   <FiTrash2 size={18} />
                 </button>
               </div>
@@ -101,11 +156,14 @@ export const DepartmentsPage: React.FC = () => {
         ))}
       </div>
 
-      {/* Add Department Modal */}
+      {/* Add/Edit Department Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Department"
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        title={isEditMode ? "Edit Department" : "Add New Department"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
@@ -136,7 +194,7 @@ export const DepartmentsPage: React.FC = () => {
             onChange={(e) =>
               setFormData({ ...formData, headOfDepartment: e.target.value })
             }
-            placeholder="Dr. John Smith"
+            placeholder="Name"
           />
 
           <div className="flex gap-3 pt-4">
@@ -154,7 +212,7 @@ export const DepartmentsPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              Create Department
+              {isEditMode ? 'Update Department' : 'Create Department'}
             </Button>
           </div>
         </form>

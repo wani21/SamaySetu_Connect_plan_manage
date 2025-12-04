@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiCalendar, FiClock, FiBook, FiCheckCircle, FiInfo } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiBook, FiCheckCircle } from 'react-icons/fi';
 import { StatsCard } from '../components/dashboard/StatsCard';
 import { Card } from '../components/common/Card';
 import { useAuthStore } from '../store/authStore';
@@ -31,6 +31,27 @@ export const DashboardPage: React.FC = () => {
     }
   }, [user?.email]);
 
+  // Sample data for presentation
+  const todayClasses = [
+    { time: '09:00 - 10:00', subject: 'Data Structures', room: 'H202', division: 'SY-A', type: 'lecture' },
+    { time: '10:00 - 11:00', subject: 'Algorithms', room: 'H203', division: 'TY-B', type: 'lecture' },
+    { time: '02:00 - 04:00', subject: 'Database Lab', room: 'Lab-2', division: 'TY-B', type: 'lab' },
+  ];
+
+  const upcomingClasses = [
+    { day: 'Tuesday', time: '09:00 - 10:00', subject: 'Operating Systems', room: 'H204', division: 'TY-C' },
+    { day: 'Tuesday', time: '02:00 - 04:00', subject: 'Data Structures Lab', room: 'Lab-1', division: 'SY-A' },
+    { day: 'Wednesday', time: '10:00 - 11:00', subject: 'Software Engineering', room: 'H205', division: 'TY-B' },
+    { day: 'Wednesday', time: '02:00 - 03:00', subject: 'Web Technologies', room: 'H208', division: 'BTech-A' },
+    { day: 'Thursday', time: '09:00 - 10:00', subject: 'Data Structures', room: 'H202', division: 'SY-B' },
+    { day: 'Friday', time: '10:00 - 11:00', subject: 'Operating Systems', room: 'H205', division: 'TY-A' },
+  ];
+
+  const getCurrentDay = () => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[new Date().getDay()];
+  };
+
   const getUserName = () => {
     if (user?.name) return user.name;
     if (user?.email) {
@@ -61,25 +82,25 @@ export const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatsCard
               title="Total Classes"
-              value={isLoading ? '...' : '0'}
+              value={isLoading ? '...' : '24'}
               icon={FiBook}
               color="blue"
             />
             <StatsCard
               title="This Week"
-              value={isLoading ? '...' : '0'}
+              value={isLoading ? '...' : '18'}
               icon={FiCalendar}
               color="green"
             />
             <StatsCard
               title="Hours/Week"
-              value={isLoading ? '...' : teacherData?.weeklyHoursLimit || '0'}
+              value={isLoading ? '...' : teacherData?.weeklyHoursLimit || '25'}
               icon={FiClock}
               color="orange"
             />
             <StatsCard
               title="Completed"
-              value={isLoading ? '...' : '0'}
+              value={isLoading ? '...' : '12'}
               icon={FiCheckCircle}
               color="purple"
             />
@@ -89,15 +110,37 @@ export const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Today's Schedule */}
             <Card>
-              <h3 className="card-header">Today's Schedule</h3>
-              <div className="flex items-center justify-center p-8 text-center">
-                <div>
-                  <FiInfo className="mx-auto text-4xl text-gray-400 mb-3" />
-                  <p className="text-gray-600 mb-2">No classes scheduled yet</p>
-                  <p className="text-sm text-gray-500">
-                    Timetable will be generated in Phase 2
-                  </p>
-                </div>
+              <h3 className="card-header">Today's Schedule - {getCurrentDay()}</h3>
+              <div className="space-y-3">
+                {todayClasses.map((classItem, index) => (
+                  <div 
+                    key={index} 
+                    className={`p-4 rounded-lg border-l-4 ${
+                      classItem.type === 'lab' 
+                        ? 'bg-purple-50 border-purple-500' 
+                        : 'bg-blue-50 border-blue-500'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <FiClock className="text-gray-600" size={14} />
+                          <span className="text-sm font-medium text-gray-700">{classItem.time}</span>
+                          {classItem.type === 'lab' && (
+                            <span className="px-2 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full">
+                              🔬 Lab
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-semibold text-gray-900 mb-1">{classItem.subject}</p>
+                        <div className="flex items-center gap-3 text-xs text-gray-600">
+                          <span>📍 {classItem.room}</span>
+                          <span>👥 {classItem.division}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </Card>
 
@@ -126,17 +169,42 @@ export const DashboardPage: React.FC = () => {
           {/* Upcoming Classes */}
           <Card className="mt-6">
             <h3 className="card-header">Upcoming This Week</h3>
-            <div className="flex items-center justify-center p-12 text-center">
-              <div>
-                <FiCalendar className="mx-auto text-5xl text-gray-400 mb-4" />
-                <p className="text-lg text-gray-600 mb-2">No timetable generated yet</p>
-                <p className="text-sm text-gray-500">
-                  The timetable generation feature will be available in Phase 2 of the project.
-                </p>
-                <p className="text-sm text-gray-500 mt-2">
-                  For now, you can manage your availability and profile settings.
-                </p>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Day</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Time</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Subject</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Room</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Division</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingClasses.map((classItem, index) => (
+                    <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <span className="inline-block px-2 py-1 bg-primary-100 text-primary-800 rounded text-sm font-medium">
+                          {classItem.day}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">
+                        <div className="flex items-center gap-2">
+                          <FiClock size={14} />
+                          {classItem.time}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-gray-900">{classItem.subject}</td>
+                      <td className="py-3 px-4 text-gray-600">{classItem.room}</td>
+                      <td className="py-3 px-4">
+                        <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                          {classItem.division}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
     </div>

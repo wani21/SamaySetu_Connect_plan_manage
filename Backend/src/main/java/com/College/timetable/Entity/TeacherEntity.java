@@ -39,6 +39,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class TeacherEntity implements UserDetails{
 
 	@Id
@@ -72,6 +73,9 @@ public class TeacherEntity implements UserDetails{
 	
 	@Column(name = "is_active")
 	private Boolean isActive = true;
+	
+	@Column(name = "is_approved")
+	private Boolean isApproved = false;
 	
 	@NotBlank(message = "Password is required")
 	private String password;
@@ -120,12 +124,15 @@ public class TeacherEntity implements UserDetails{
 		joinColumns = @JoinColumn(name = "teacher_id"),
 		inverseJoinColumns = @JoinColumn(name = "course_id")
 	)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private Set<CourseEntity> courses = new HashSet<>();
 	
 	@OneToMany(mappedBy = "teacher", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<TeacherAvailability> availabilities;
 	
 	@OneToMany(mappedBy = "teacher", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<TimetableEntry> timetableEntries;
 
 	@Override

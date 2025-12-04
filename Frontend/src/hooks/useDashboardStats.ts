@@ -49,8 +49,12 @@ export const useDashboardStats = () => {
           api.get('/admin/api/time-slots'),
         ]);
 
+        // Filter to count only teachers (exclude admins)
+        const teachersData = Array.isArray(teachersRes.data) ? teachersRes.data : [];
+        const teachersCount = teachersData.filter((user: any) => user.role === 'TEACHER').length;
+
         setStats({
-          totalTeachers: teachersRes.data?.length || 0,
+          totalTeachers: teachersCount,
           totalCourses: coursesRes.data?.length || 0,
           totalDepartments: departmentsRes.data?.length || 0,
           totalRooms: roomsRes.data?.length || 0,

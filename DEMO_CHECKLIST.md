@@ -146,7 +146,7 @@
 - [ ] Fill form:
   ```
   Name: A
-  Year: SE (Second Year)
+  Year: SY (Second Year)
   Branch: Computer Science
   Department: Computer Science
   Academic Year: 2024-25

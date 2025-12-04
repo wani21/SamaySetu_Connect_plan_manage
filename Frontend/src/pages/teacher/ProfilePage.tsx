@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FiUser, FiMail, FiPhone, FiBriefcase, FiLock, FiSave } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/common/Card';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { useAuthStore } from '../../store/authStore';
+import { teacherAPI } from '../../services/api';
 
 export const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   
   const [profileData, setProfileData] = useState({
-    name: 'John Doe',
+    name: '',
     email: user?.email || '',
-    phone: '1234567890',
-    employeeId: 'EMP001',
-    specialization: 'Computer Science',
+    phone: '',
+    employeeId: '',
+    specialization: '',
     weeklyHoursLimit: '25',
+    department: null as any,
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -25,15 +27,56 @@ export const ProfilePage: React.FC = () => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      setIsFetching(true);
+      const response = await teacherAPI.getProfile();
+      const data = response.data;
+      setProfileData({
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        employeeId: data.employeeId || '',
+        specialization: data.specialization || '',
+        weeklyHoursLimit: data.weeklyHoursLimit?.toString() || '25',
+        department: data.department,
+      });
+    } catch (error: any) {
+      console.error('Error fetching profile:', error);
+      toast.error('Failed to load profile data');
+    } finally {
+      setIsFetching(false);
+    }
+  };
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const updateData = {
+        name: profileData.name,
+        phone: profileData.phone,
+        specialization: profileData.specialization,
+        weeklyHoursLimit: parseInt(profileData.weeklyHoursLimit),
+        email: profileData.email,
+        employeeId: profileData.employeeId,
+        departmentId: profileData.department?.id || null,
+        // Don't include password unless changing it
+      };
+      
+      await teacherAPI.updateProfile(updateData);
       toast.success('Profile updated successfully!');
-    } catch (error) {
-      toast.error('Failed to update profile');
+      await fetchProfile(); // Refresh profile data
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      const message = error.response?.data?.message || error.response?.data || 'Failed to update profile';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -42,22 +85,57 @@ export const ProfilePage: React.FC = () => {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!passwordData.currentPassword || !passwordData.newPassword) {
+      toast.error('Please fill in all password fields');
+      return;
+    }
+    
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error('New passwords do not match');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
       return;
     }
 
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Update profile with new password
+      const updateData = {
+        name: profileData.name,
+        phone: profileData.phone,
+        specialization: profileData.specialization,
+        weeklyHoursLimit: parseInt(profileData.weeklyHoursLimit),
+        email: profileData.email,
+        employeeId: profileData.employeeId,
+        departmentId: profileData.department?.id || null,
+        password: passwordData.newPassword, // Include password for change
+      };
+      
+      await teacherAPI.updateProfile(updateData);
       toast.success('Password changed successfully!');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error) {
-      toast.error('Failed to change password');
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      const message = error.response?.data?.message || error.response?.data || 'Failed to change password';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (isFetching) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -72,13 +150,34 @@ export const ProfilePage: React.FC = () => {
         <Card>
           <div className="text-center">
             <div className="w-32 h-32 bg-gradient-to-br from-primary-800 to-primary-900 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-4xl font-bold">
-              {profileData.name.charAt(0)}
+              {profileData.name.charAt(0).toUpperCase()}
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-1">{profileData.name}</h3>
-            <p className="text-gray-600 mb-2">{profileData.email}</p>
-            <span className="inline-block px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm font-medium">
+            <p className="text-sm text-gray-500 mt-1">{profileData.email}</p>
+            <span className="inline-block px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm font-medium mt-2 capitalize">
               {user?.role}
             </span>
+            
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Status:</span>
+                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                    Active
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Role:</span>
+                  <span className="font-medium text-gray-900 capitalize">{user?.role}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Member Since:</span>
+                  <span className="font-medium text-gray-900">
+                    {new Date().getFullYear()}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
 
@@ -190,26 +289,34 @@ export const ProfilePage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-6">
         <Card>
           <div className="text-center">
-            <p className="text-3xl font-bold text-primary-800 mb-1">24</p>
-            <p className="text-sm text-gray-600">Classes/Week</p>
+            <p className="text-3xl font-bold text-primary-800 mb-1">
+              {profileData.weeklyHoursLimit || '25'}
+            </p>
+            <p className="text-sm text-gray-600">Weekly Hours Limit</p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-3xl font-bold text-green-600 mb-1">5</p>
-            <p className="text-sm text-gray-600">Courses</p>
+            <p className="text-3xl font-bold text-green-600 mb-1">
+              {profileData.department?.name ? '1' : '0'}
+            </p>
+            <p className="text-sm text-gray-600">Department</p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-3xl font-bold text-orange-600 mb-1">3</p>
-            <p className="text-sm text-gray-600">Divisions</p>
+            <p className="text-3xl font-bold text-orange-600 mb-1">
+              {profileData.employeeId ? '✓' : '-'}
+            </p>
+            <p className="text-sm text-gray-600">Employee ID</p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-3xl font-bold text-purple-600 mb-1">16</p>
-            <p className="text-sm text-gray-600">Hours/Week</p>
+            <p className="text-3xl font-bold text-purple-600 mb-1">
+              {profileData.specialization ? '✓' : '-'}
+            </p>
+            <p className="text-sm text-gray-600">Specialization</p>
           </div>
         </Card>
       </div>

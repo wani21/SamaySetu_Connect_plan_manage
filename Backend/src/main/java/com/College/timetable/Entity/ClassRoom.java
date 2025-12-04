@@ -32,6 +32,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class ClassRoom {
 	
 	@Id
@@ -47,6 +48,11 @@ public class ClassRoom {
 	@Size(max = 20)
 	@Column(name = "room_number", nullable = false, unique = true)
 	private String roomNumber;
+	
+	@NotBlank(message = "Building wing is required")
+	@Size(max = 10)
+	@Column(name = "building_wing", nullable = false)
+	private String buildingWing;
 	
 	@Min(value = 1, message = "Capacity must be at least 1")
 	@Column(nullable = false)
@@ -83,5 +89,6 @@ public class ClassRoom {
 	private DepartmentEntity department;
 	
 	@OneToMany(mappedBy = "room", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<TimetableEntry> timetableEntries;
 }

@@ -73,29 +73,44 @@ export const AdminDashboardHome: React.FC = () => {
         </Card>
 
         <Card>
-          <h3 className="card-header">Recent Activity</h3>
+          <h3 className="card-header">System Summary</h3>
           <div className="space-y-3">
-            {[
-              { action: 'New teacher registered', time: '2 hours ago', type: 'success' },
-              { action: 'Course updated', time: '5 hours ago', type: 'info' },
-              { action: 'Department created', time: '1 day ago', type: 'success' },
-              { action: 'Room added', time: '2 days ago', type: 'info' },
-            ].map((activity, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{activity.action}</p>
-                  <p className="text-xs text-gray-500">{activity.time}</p>
-                </div>
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    activity.type === 'success' ? 'bg-green-500' : 'bg-blue-500'
-                  }`}
-                />
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Total Teachers</p>
+                <p className="text-xs text-gray-500">Active in system</p>
               </div>
-            ))}
+              <span className="text-lg font-bold text-blue-600">
+                {isLoading ? '...' : stats.totalTeachers}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Total Courses</p>
+                <p className="text-xs text-gray-500">Available courses</p>
+              </div>
+              <span className="text-lg font-bold text-green-600">
+                {isLoading ? '...' : stats.totalCourses}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Total Rooms</p>
+                <p className="text-xs text-gray-500">Classrooms & labs</p>
+              </div>
+              <span className="text-lg font-bold text-purple-600">
+                {isLoading ? '...' : stats.totalRooms}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Total Divisions</p>
+                <p className="text-xs text-gray-500">Student sections</p>
+              </div>
+              <span className="text-lg font-bold text-orange-600">
+                {isLoading ? '...' : stats.totalDivisions}
+              </span>
+            </div>
           </div>
         </Card>
       </div>

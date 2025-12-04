@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.College.timetable.Entity.TeacherEntity;
+import com.College.timetable.IO.ProfileUpdateRequest;
 import com.College.timetable.Service.TeacherService;
 
 import jakarta.validation.Valid;
@@ -48,6 +49,14 @@ public class TeacherController {
 		return ResponseEntity.ok(teacherService.getByEmail(email));
 	}
 	
+	@PutMapping("/profile")
+	public ResponseEntity<TeacherEntity> updateProfile(Authentication authentication, @Valid @RequestBody ProfileUpdateRequest request) {
+		String email = authentication.getName();
+		TeacherEntity currentTeacher = teacherService.getByEmail(email);
+		TeacherEntity updated = teacherService.updateProfile(currentTeacher.getId(), request);
+		return ResponseEntity.ok(updated);
+	}
+	
 	@PutMapping("/{id}")
 	public ResponseEntity<TeacherEntity> updateTeacher(@PathVariable Long id, @Valid @RequestBody TeacherEntity teach) {
 		TeacherEntity updated = teacherService.update(id, teach);
@@ -58,5 +67,24 @@ public class TeacherController {
 	public ResponseEntity<String> deleteTeacher(@PathVariable Long id) {
 		teacherService.delete(id);
 		return ResponseEntity.ok("Teacher deleted successfully");
+	}
+	
+	// Admin approval endpoints
+	@GetMapping("/pending-approvals")
+	public ResponseEntity<List<TeacherEntity>> getPendingApprovals() {
+		return ResponseEntity.ok(teacherService.getPendingApprovals());
+	}
+	
+	@PostMapping("/{id}/approve")
+	public ResponseEntity<TeacherEntity> approveTeacher(@PathVariable Long id) {
+		TeacherEntity approved = teacherService.approveTeacher(id);
+		return ResponseEntity.ok(approved);
+	}
+	
+	@PostMapping("/{id}/reject")
+	public ResponseEntity<TeacherEntity> rejectTeacher(@PathVariable Long id, @RequestBody(required = false) String reason) {
+		String rejectionReason = (reason != null && !reason.isEmpty()) ? reason : "Application rejected by administrator";
+		TeacherEntity rejected = teacherService.rejectTeacher(id, rejectionReason);
+		return ResponseEntity.ok(rejected);
 	}
 }
