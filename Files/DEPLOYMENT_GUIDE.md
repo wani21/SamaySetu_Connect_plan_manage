@@ -596,4 +596,4 @@ For deployment issues:
 
 **Deployment Guide for MIT Academy of Engineering**
 
-© 2025 MIT Academy of Engineering - SamaySetu Development Team
+© 2026 MIT Academy of Engineering - SamaySetu Development Team

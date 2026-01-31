@@ -22,7 +22,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "teacher_availability")
+@Table(name = "user_availability")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -34,7 +34,7 @@ public class TeacherAvailability {
 	
 	@NotNull(message = "Teacher is required")
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "teacher_id", nullable = false)
+	@JoinColumn(name = "user_id", nullable = false)
 	private TeacherEntity teacher;
 	
 	@NotNull(message = "Day of week is required")

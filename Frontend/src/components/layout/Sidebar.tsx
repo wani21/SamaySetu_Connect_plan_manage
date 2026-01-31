@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
           {/* Footer */}
           <div className="p-4 border-t border-gray-200">
             <p className="text-xs text-gray-500 text-center">
-              © 2025 MIT Academy of Engineering
+              © 2026 MIT Academy of Engineering
             </p>
           </div>
         </div>

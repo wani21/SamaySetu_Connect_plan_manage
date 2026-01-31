@@ -271,7 +271,7 @@ export const StaffManagementPage: React.FC = () => {
           }`}
         >
           <FiUpload className="inline mr-2" />
-          Bulk Upload
+          Bulk Registration
         </button>
       </div>
 
@@ -366,7 +366,7 @@ export const StaffManagementPage: React.FC = () => {
               </table>
               {filteredStaff.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
-                  {staff.length === 0 ? 'No staff members found. Add staff using the button above or bulk upload.' : 'No staff match your search criteria.'}
+                  {staff.length === 0 ? 'No staff members found. Add staff using the button above or Bulk Registration.' : 'No staff match your search criteria.'}
                 </div>
               )}
             </div>
@@ -374,7 +374,7 @@ export const StaffManagementPage: React.FC = () => {
         </>
       )}
 
-      {/* Bulk Upload Tab */}
+      {/* Bulk Registration Tab */}
       {activeTab === 'upload' && (
         <Card>
           <div className="max-w-2xl mx-auto py-8">
@@ -382,7 +382,7 @@ export const StaffManagementPage: React.FC = () => {
               <div className="mx-auto w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4">
                 <FiUpload className="w-8 h-8 text-primary-600" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Bulk Upload Staff</h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Bulk Staff Registration</h2>
               <p className="text-gray-600">Upload a CSV file to add multiple staff members at once</p>
             </div>
 

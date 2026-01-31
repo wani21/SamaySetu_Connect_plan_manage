@@ -35,7 +35,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "teachers")
+@Table(name = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -129,7 +129,7 @@ public class TeacherEntity implements UserDetails{
 	@ManyToMany
 	@JoinTable(
 		name = "teacher_courses",
-		joinColumns = @JoinColumn(name = "teacher_id"),
+		joinColumns = @JoinColumn(name = "user_id"),
 		inverseJoinColumns = @JoinColumn(name = "course_id")
 	)
 	@com.fasterxml.jackson.annotation.JsonIgnore

@@ -1283,7 +1283,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["admin", "upload-staff"]
 						},
-						"description": "Bulk upload staff via CSV file. Requires ADMIN role."
+						"description": "Bulk Staff Registration via CSV file. Requires ADMIN role."
 					},
 					"response": []
 				},
@@ -1377,7 +1377,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["admin", "upload-courses"]
 						},
-						"description": "Bulk upload courses via CSV file for specific department and year. Requires ADMIN role."
+						"description": "Bulk Registration courses via CSV file for specific department and year. Requires ADMIN role."
 					},
 					"response": []
 				},

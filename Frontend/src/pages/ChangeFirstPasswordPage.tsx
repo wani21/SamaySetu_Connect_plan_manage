@@ -214,7 +214,7 @@ export const ChangeFirstPasswordPage: React.FC = () => {
 
               {/* Footer */}
               <div className="mt-6 pt-6 border-t border-gray-200 text-center text-xs text-gray-500">
-                <p>© 2025 MIT Academy of Engineering</p>
+                <p>© 2026 MIT Academy of Engineering</p>
               </div>
             </div>
           </motion.div>

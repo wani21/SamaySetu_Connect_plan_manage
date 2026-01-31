@@ -5,11 +5,11 @@ Modern, responsive React frontend for SamaySetu Timetable Management System with
 ## ✨ Latest Features (v3.0)
 
 - ✅ **Academic Year Separation** - Complete isolation of academic years with department copying
-- ✅ **Enhanced Staff Management** - Bulk upload, approval workflow, manual creation
+- ✅ **Enhanced Staff Management** - Bulk Registration, approval workflow, manual creation
 - ✅ **Advanced Academic Structure** - Hierarchical navigation with batches and divisions
 - ✅ **Time Slot Types** - Multiple schedule support (Schedule 1 & Schedule 2)
 - ✅ **Class Management** - Class teacher and CR assignment for divisions
-- ✅ **CSV Operations** - Bulk upload/download for staff and courses
+- ✅ **CSV Operations** - Bulk Registration/download for staff and courses
 - ✅ **MIT AOE Color Scheme** - Navy Blue & Cyan institutional branding
 - ✅ **Complete Authentication Flow** - Login, Register, Email Verification, Password Reset
 - ✅ **Role-Based Dashboards** - Teacher and Admin interfaces
@@ -115,7 +115,7 @@ Frontend/
   - Departments (academic year specific, copy between years)
   - Years Overview (FY, SY, TY, BTech organization)
   - Divisions (with class teacher and CR assignment)
-  - Courses (semester-wise, bulk upload via CSV)
+  - Courses (semester-wise, Bulk Registration via CSV)
   - Batches (student group management)
 
 - **Staff Management**:
@@ -372,4 +372,4 @@ Your complete frontend includes:
 
 **Built with ❤️ for MIT Academy of Engineering, Alandi, Pune**
 
-© 2025 MIT Academy of Engineering - SamaySetu Development Team
+© 2026 MIT Academy of Engineering - SamaySetu Development Team

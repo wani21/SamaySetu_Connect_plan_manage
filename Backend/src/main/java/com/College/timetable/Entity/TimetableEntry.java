@@ -45,12 +45,12 @@ public class TimetableEntry {
 
 	@NotNull(message = "Teacher is required")
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "teacher_id", nullable = false)
+	@JoinColumn(name = "user_id", nullable = false)
 	private TeacherEntity teacher;
 
 	@NotNull(message = "Room is required")
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "room_id", nullable = false)
+	@JoinColumn(name = "classroom_id", nullable = false)
 	private ClassRoom room;
 
 	@NotNull(message = "Time slot is required")

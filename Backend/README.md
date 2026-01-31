@@ -539,4 +539,4 @@ logging.pattern.file=%d{yyyy-MM-dd HH:mm:ss} - %msg%n
 
 **Built with ❤️ for MIT Academy of Engineering, Alandi, Pune**
 
-© 2025 MIT Academy of Engineering - SamaySetu Development Team
+© 2026 MIT Academy of Engineering - SamaySetu Development Team

@@ -24,7 +24,7 @@ SamaySetu is a modern, web-based timetable management system built specifically 
 ### 👨‍💼 Administrative Features
 - **Academic Year Management** - Create and manage multiple academic years
 - **Department Structure** - Organize departments by academic years with year-specific availability
-- **Staff Management** - Bulk upload via CSV or manual entry with approval workflow
+- **Staff Management** - Bulk Registration via CSV or manual entry with approval workflow
 - **Course Management** - Create courses with semester-wise organization
 - **Division & Batch Management** - Organize students into divisions and batches
 - **Time Slot Configuration** - Flexible scheduling with multiple time slot types
