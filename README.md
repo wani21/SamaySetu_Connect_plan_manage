@@ -69,10 +69,10 @@ SamaySetu is a modern, web-based timetable management system built specifically 
 ### Prerequisites
 - **Java 17+**
 - **Node.js 18+**
-- **MySQL 8.0+**
+- **Supabase Account** (PostgreSQL database)
 - **Maven 3.6+**
 
-### Backend Setup
+### Quick Start (Local Development)
 
 1. **Clone the repository**
    ```bash
@@ -81,57 +81,63 @@ SamaySetu is a modern, web-based timetable management system built specifically 
    ```
 
 2. **Configure Database**
-   ```bash
-   # Create MySQL database
-   mysql -u root -p
-   CREATE DATABASE samaysetu_db;
-   ```
+   - Create a Supabase project at https://supabase.com
+   - Run the migration script: `Scripts/supabase_complete_migration.sql`
+   - Update `Backend/src/main/resources/application-dev.properties` with your credentials
 
-3. **Update Application Properties**
-   ```properties
-   # Backend/src/main/resources/application.properties
-   spring.datasource.url=jdbc:mysql://localhost:3306/samaysetu_db
-   spring.datasource.username=samaysetu_user
-   spring.datasource.password=samaysetu_password
-   ```
-
-4. **Run Database Migrations**
-   ```bash
-   # Execute the SQL script
-   mysql -u root -p samaysetu_db < add_batches_and_timeslot_types.sql
-   ```
-
-5. **Start Backend Server**
+3. **Start Backend Server**
    ```bash
    cd Backend
-   mvn spring-boot:run
+   mvnw.cmd spring-boot:run
    ```
 
-### Frontend Setup
-
-1. **Install Dependencies**
+4. **Start Frontend**
    ```bash
    cd Frontend
    npm install
-   ```
-
-2. **Start Development Server**
-   ```bash
    npm run dev
    ```
 
-### Initial Setup
-
-1. **Create Admin User**
-   ```sql
-   -- Run this SQL to create initial admin
-   INSERT INTO users (name, email, password, role, is_active, is_email_verified) 
-   VALUES ('System Admin', 'admin@mitaoe.ac.in', '$2a$10$hashedpassword', 'ADMIN', true, true);
-   ```
-
-2. **Access the Application**
+5. **Access the Application**
    - Frontend: `http://localhost:5173`
    - Backend API: `http://localhost:8083`
+   - Login: `admin@mitaoe.ac.in` / `admin123`
+
+### 🌐 AWS Deployment (Production) - FULLY AUTOMATED! 🤖
+
+**Complete CI/CD Pipeline**: Just `git push` and both backend and frontend deploy automatically!
+
+**📘 MAIN GUIDE**: [`COMPLETE_AWS_DEPLOYMENT_WITH_GITHUB_ACTIONS.md`](COMPLETE_AWS_DEPLOYMENT_WITH_GITHUB_ACTIONS.md)
+
+**Setup (One-time, 75 minutes)**:
+1. Create AWS IAM user for GitHub Actions
+2. Deploy backend to Elastic Beanstalk (manual first time)
+3. Deploy frontend to AWS Amplify (auto-deploy from GitHub)
+4. Set up GitHub Actions workflow
+5. **Future updates**: Just `git push origin main` → Auto-deploys! ✅
+
+**Quick References**:
+- ⚡ [`QUICK_START_GITHUB_ACTIONS.md`](QUICK_START_GITHUB_ACTIONS.md) - 75-minute quick start
+- 🏗️ [`DEPLOYMENT_ARCHITECTURE.md`](DEPLOYMENT_ARCHITECTURE.md) - Architecture diagrams
+- 📋 [`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) - Deployment checklist
+- 🔄 [`SWITCH_TO_PRODUCTION.md`](SWITCH_TO_PRODUCTION.md) - Spring profiles guide
+
+**Features**:
+- ✅ Backend auto-deploy via GitHub Actions
+- ✅ Frontend auto-deploy via AWS Amplify
+- ✅ Complete CI/CD pipeline
+- ✅ Cost: $0/month (AWS free tier)
+- ✅ [`AUTO_DEPLOY_SUMMARY.md`](AUTO_DEPLOY_SUMMARY.md) - Automation summary
+- 📋 [`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) - Deployment checklist
+
+**Benefits**:
+- ✅ No manual JAR uploads
+- ✅ No AWS Console uploads
+- ✅ Both frontend and backend auto-deploy
+- ✅ Professional CI/CD pipeline
+- ✅ Just `git push` to deploy!
+
+**Cost**: $0/month (AWS free tier for 12 months)
 
 ## 📱 User Roles & Permissions
 
@@ -157,18 +163,26 @@ SamaySetu is a modern, web-based timetable management system built specifically 
 ### Backend
 - **Framework**: Spring Boot 3.0+
 - **Language**: Java 17
-- **Database**: MySQL 8.0
+- **Database**: Supabase (PostgreSQL)
 - **Security**: Spring Security + JWT
 - **ORM**: JPA/Hibernate
 - **Build Tool**: Maven
+- **Deployment**: AWS Elastic Beanstalk
 
 ### Frontend
 - **Framework**: React 18
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
-- **State Management**: React Hooks
+- **State Management**: Zustand
 - **HTTP Client**: Axios
 - **Icons**: React Icons
+- **Deployment**: AWS Amplify
+
+### Infrastructure
+- **Database**: Supabase (PostgreSQL with RLS)
+- **Backend Hosting**: AWS Elastic Beanstalk
+- **Frontend Hosting**: AWS Amplify
+- **CI/CD**: GitHub → Amplify (auto-deploy)
 
 ## 📋 API Documentation
 
@@ -193,33 +207,58 @@ POST   /admin/upload-courses        # Bulk course upload
 
 ## 🔧 Configuration
 
+### Spring Profiles
+The application uses Spring Profiles for environment management:
+
+**Development** (`application-dev.properties`):
+- Local development with localhost URLs
+- Verbose logging for debugging
+- Direct database connection
+
+**Production** (`application-prod.properties`):
+- AWS deployment with environment variables
+- Optimized logging
+- Production security settings
+
+**Switch profiles** by changing one line in `application.properties`:
+```properties
+spring.profiles.active=dev  # or 'prod' for AWS
+```
+
 ### Email Configuration
 ```properties
 # SMTP settings for email verification
 spring.mail.host=smtp.gmail.com
 spring.mail.port=587
-spring.mail.username=samaysetu.mitaoe@gmail.com
+spring.mail.username=202301040228@mitaoe.ac.in
 spring.mail.password=your-app-password
 ```
 
 ### JWT Configuration
 ```properties
-# JWT token settings
-jwt.secret=SamaySetu_MIT_AOE_2024_Secret_Key
-jwt.expiration=86400000
+# JWT token settings (configured in profile files)
+jwt.secret.key=your-secret-key
 ```
 
 ## 📊 Database Schema
 
 ### Core Entities
-- **Users** - Authentication and user management
-- **Academic Years** - Academic year definitions
-- **Departments** - Academic departments by year
-- **Courses** - Subject/course definitions
-- **Divisions** - Class divisions with teachers
-- **Batches** - Student batch organization
-- **Time Slots** - Scheduling time periods
-- **Rooms** - Classroom management
+- **users** (formerly teachers) - Authentication and user management
+- **academic_years** - Academic year definitions
+- **departments** - Academic departments by year
+- **courses** - Subject/course definitions
+- **divisions** - Class divisions with teachers
+- **batches** - Student batch organization
+- **time_slots** - Scheduling time periods
+- **classrooms** (formerly rooms) - Classroom management with building/wing
+- **user_availability** - Teacher availability tracking
+- **timetable_entries** - Scheduled classes
+
+### Database Migration
+- Migrated from MySQL to Supabase (PostgreSQL)
+- Complete migration script: `Scripts/supabase_complete_migration.sql`
+- Row Level Security (RLS) policies implemented
+- All data preserved during migration
 
 ## 📝 License
 
@@ -235,13 +274,46 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🎯 Future Enhancements
 
 - [ ] Mobile application (React Native)
-- [ ] Automated timetable generation
+- [ ] Automated timetable generation with AI
 - [ ] Conflict detection and resolution
 - [ ] Student attendance integration
 - [ ] Parent portal access
 - [ ] SMS notifications
 - [ ] Advanced reporting and analytics
 - [ ] Multi-language support
+- [ ] Real-time collaboration features
+
+## 📚 Documentation
+
+### Deployment Guides
+- [`START_HERE_AWS_DEPLOYMENT.md`](START_HERE_AWS_DEPLOYMENT.md) - AWS deployment overview
+- [`QUICK_AWS_DEPLOY.md`](QUICK_AWS_DEPLOY.md) - Quick deployment guide
+- [`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) - Deployment checklist
+- [`DEPLOY_QUICK_REFERENCE.md`](DEPLOY_QUICK_REFERENCE.md) - One-page reference
+
+### Configuration Guides
+- [`SWITCH_TO_PRODUCTION.md`](SWITCH_TO_PRODUCTION.md) - Spring profiles guide
+- [`AWS_SERVICES_COMPARISON.md`](AWS_SERVICES_COMPARISON.md) - AWS services comparison
+- [`AWS_DEPLOYMENT_GUIDE.md`](AWS_DEPLOYMENT_GUIDE.md) - Detailed AWS guide
+
+### Database
+- [`Scripts/supabase_complete_migration.sql`](Scripts/supabase_complete_migration.sql) - Database migration
+- [`database.txt`](database.txt) - Database credentials
+
+### API Documentation
+- [`SamaySetu_Postman_Collection.json`](SamaySetu_Postman_Collection.json) - Postman collection
+- [`SamaySetu_Postman_Environment.json`](SamaySetu_Postman_Environment.json) - Postman environment
+
+## 🚀 Live Demo
+
+**Production URL**: Available after AWS deployment  
+**Login**: `admin@mitaoe.ac.in` / `admin123`
+
+## 💰 Cost
+
+- **Development**: Free (Supabase free tier)
+- **Production**: $0/month (AWS free tier for 12 months)
+- **After Free Tier**: ~$13/month (AWS Elastic Beanstalk + Amplify)
 
 ---
 

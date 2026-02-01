@@ -3,7 +3,6 @@ com\College\timetable\Service\DivisionService.class
 com\College\timetable\Repository\Dep_repo.class
 com\College\timetable\IO\ResetPasswordRequest.class
 com\College\timetable\Service\TableService.class
-com\College\timetable\Review1Application.class
 com\College\timetable\Controller\AdminController.class
 com\College\timetable\Entity\RoomType.class
 com\College\timetable\Service\AdminService.class
@@ -53,6 +52,7 @@ com\College\timetable\Repository\Student_repo.class
 com\College\timetable\Service\DepartmentService.class
 com\College\timetable\Entity\TimetableEntry.class
 com\College\timetable\Entity\AcadamicYear.class
+com\College\timetable\samaysetuApplication.class
 com\College\timetable\Entity\DayOfWeek.class
 com\College\timetable\Repository\Room_repo.class
 com\College\timetable\Repository\TeacherAvailability_repo.class

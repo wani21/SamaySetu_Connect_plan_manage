@@ -26,7 +26,7 @@ mysql --version
 mysql -u root -p
 
 -- Create database
-CREATE DATABASE Review1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE samaysetu CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Verify
 SHOW DATABASES;
@@ -42,10 +42,10 @@ exit;
 Edit `Backend/src/main/resources/application.properties`:
 
 ```properties
-spring.application.name=Review1
+spring.application.name=samaysetu
 
 # Update these if needed
-spring.datasource.url=jdbc:mysql://localhost:3306/Review1
+spring.datasource.url=jdbc:mysql://localhost:3306/samaysetu
 spring.datasource.username=root
 spring.datasource.password=YOUR_PASSWORD_HERE
 
@@ -68,7 +68,7 @@ cd Backend
 
 ### Option B: Using IDE
 1. Open `Backend` folder in your IDE
-2. Find `Review1Application.java`
+2. Find `samaysetuApplication.java`
 3. Right-click → Run
 
 ---
@@ -211,7 +211,7 @@ curl -X POST http://localhost:8083/api/divisions \
 mysql -u root -p
 
 -- Use database
-USE Review1;
+USE samaysetu;
 
 -- Show all tables
 SHOW TABLES;
@@ -295,13 +295,13 @@ curl http://localhost:8083/api/departments
 ```bash
 # In terminal where app is running
 # Look for:
-# - "Started Review1Application"
+# - "Started samaysetuApplication"
 # - "Tomcat started on port(s): 8083"
 ```
 
 ### Check Database
 ```sql
-USE Review1;
+USE samaysetu;
 SHOW TABLES;
 SELECT COUNT(*) FROM departments;
 ```

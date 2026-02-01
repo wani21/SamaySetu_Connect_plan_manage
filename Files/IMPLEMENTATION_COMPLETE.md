@@ -7,7 +7,7 @@
 ## 📦 What Was Done
 
 ### 1. **Package Restructuring** ✅
-- ✅ Changed all packages from `com.example.Review1` to `com.College.timetable`
+- ✅ Changed all packages from `com.example.samaysetu` to `com.College.timetable`
 - ✅ Updated all imports across 30+ files
 - ✅ Fixed all cross-references between layers
 
@@ -131,12 +131,12 @@
 
 ### 1. Database Setup
 ```sql
-CREATE DATABASE Review1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE samaysetu CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ### 2. Update application.properties (if needed)
 ```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/Review1
+spring.datasource.url=jdbc:mysql://localhost:3306/samaysetu
 spring.datasource.username=root
 spring.datasource.password=root
 ```
@@ -148,7 +148,7 @@ cd Backend
 ```
 
 Or in your IDE:
-- Run `Review1Application.java`
+- Run `samaysetuApplication.java`
 
 ### 4. Test the API
 ```bash
@@ -313,7 +313,7 @@ public class DepartmentEntity {
 
 ### Configuration:
 - Server runs on port **8083**
-- Database name: **Review1**
+- Database name: **samaysetu**
 - Hibernate DDL: **update** (will auto-create/update tables)
 
 ---

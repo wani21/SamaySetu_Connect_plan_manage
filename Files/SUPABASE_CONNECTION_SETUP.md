@@ -156,7 +156,7 @@ Look for successful connection:
 ```
 HikariPool-1 - Starting...
 HikariPool-1 - Start completed.
-Started Review1Application in X.XXX seconds
+Started samaysetuApplication in X.XXX seconds
 ```
 
 ### 6.4 Test API Endpoint

@@ -185,7 +185,7 @@ If numbers match, migration is successful! ✅
    ```
 2. Watch logs for:
    - ✅ `HikariPool-1 - Start completed`
-   - ✅ `Started Review1Application`
+   - ✅ `Started samaysetuApplication`
    - ❌ No errors about tables not found
    - ❌ No errors about columns not found
 

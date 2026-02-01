@@ -128,7 +128,7 @@ Check logs for:
 ```
 ✅ HikariPool-1 - Starting...
 ✅ HikariPool-1 - Start completed.
-✅ Started Review1Application in X.XXX seconds
+✅ Started samaysetuApplication in X.XXX seconds
 ```
 
 ### Step 5: Test Login
