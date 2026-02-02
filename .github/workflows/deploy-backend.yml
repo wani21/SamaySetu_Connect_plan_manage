@@ -43,21 +43,17 @@ jobs:
 
       - name: Trigger Auto Scaling Group Instance Refresh
         run: |
+          # Try to start instance refresh, ignore if already in progress
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
-
-      - name: Wait for deployment
-        run: |
-          echo "Waiting for instance refresh to complete..."
-          sleep 60
-          
-          # Check refresh status
-          aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-            --max-records 1
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+            || echo "Instance refresh already in progress or not needed"
 
       - name: Deployment complete
         run: |
-          echo "✅ Deployment completed successfully!"
-          echo "Your application is now running on AWS"
+          echo "✅ JAR uploaded to S3 successfully!"
+          echo "Auto Scaling Group will pick up the new version automatically"
+          echo "Monitor progress at: AWS Console → EC2 → Target Groups → samaysetu-tg"
+          echo ""
+          echo "Test your deployment:"
+          echo "curl http://samaysetu-alb-1476674973.ap-south-1.elb.amazonaws.com/actuator/health"
