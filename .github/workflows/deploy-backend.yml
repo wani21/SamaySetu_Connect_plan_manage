@@ -43,11 +43,16 @@ jobs:
 
       - name: Trigger Auto Scaling Group Instance Refresh
         run: |
-          # Try to start instance refresh, ignore if already in progress
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+            --preferences '{
+              "MinHealthyPercentage": 100,
+              "InstanceWarmup": 600,
+              "CheckpointPercentages": [50, 100],
+              "CheckpointDelay": 300
+            }' \
             || echo "Instance refresh already in progress or not needed"
+
 
       - name: Deployment complete
         run: |

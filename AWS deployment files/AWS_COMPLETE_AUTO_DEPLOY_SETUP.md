@@ -53,6 +53,7 @@ GitHub Push → GitHub Actions → Build JAR → Deploy to EC2 → Load Balancer
    - Volume type: `gp3`
 
 8. **Advanced details:**
+   - **IAM instance profile:** Select `samaysetu-ec2-role` (IMPORTANT: This allows EC2 to download from S3)
    - Scroll to "User data" section
    - Paste this script:
 
@@ -109,6 +110,17 @@ systemctl daemon-reload
 systemctl enable samaysetu
 systemctl start samaysetu
 
+# Wait for application to be fully ready
+echo "Waiting for application to be ready..."
+for i in {1..60}; do
+  if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+    echo "Application is ready!"
+    break
+  fi
+  echo "Waiting... ($i/60)"
+  sleep 10
+done
+
 # Install and configure nginx
 apt-get install -y nginx
 cat > /etc/nginx/sites-available/default << 'EOF'
@@ -147,7 +159,8 @@ systemctl restart nginx
 2. **Bucket name:** `samaysetu-deployments` (must be globally unique, add random numbers if needed)
 3. **Region:** `ap-south-1` (Mumbai)
 4. **Block Public Access:** Keep all blocked (default)
-5. Click "Create bucket"
+5. **Bucket Versioning:** Enable (recommended for rollback capability)
+6. Click "Create bucket"
 
 ### Step 3: Create IAM Role for EC2 (5 min)
 
@@ -156,11 +169,14 @@ systemctl restart nginx
 3. **Use case:** EC2
 4. Click "Next"
 5. **Add permissions:** Search and select these policies:
-   - `AmazonS3ReadOnlyAccess`
-   - `CloudWatchAgentServerPolicy`
+   - `AmazonS3ReadOnlyAccess` (allows EC2 to download JAR from S3)
+   - `CloudWatchAgentServerPolicy` (for logging and monitoring)
 6. Click "Next"
 7. **Role name:** `samaysetu-ec2-role`
-8. Click "Create role"
+8. **Description:** `Allows EC2 instances to access S3 and CloudWatch`
+9. Click "Create role"
+
+**IMPORTANT:** This role MUST be attached to the Launch Template (done in Step 1) for instances to download the JAR from S3.
 
 ### Step 4: Create Security Groups (5 min)
 
@@ -182,9 +198,17 @@ systemctl restart nginx
 3. **Description:** `Security group for EC2 instances`
 4. **VPC:** Default VPC
 5. **Inbound rules:**
-   - Type: HTTP, Port: 80, Source: Custom → Select `samaysetu-alb-sg`
+   - Type: HTTP, Port: 80, Source: Custom → Select `samaysetu-alb-sg` (allows ALB to reach nginx)
+   - Type: Custom TCP, Port: 8080, Source: Custom → Select `samaysetu-alb-sg` (allows ALB to reach app directly)
    - Type: SSH, Port: 22, Source: My IP (for debugging)
-6. Click "Create security group"
+6. **Outbound rules:**
+   - Type: All traffic, Destination: 0.0.0.0/0 (allows instances to reach internet, S3, and Supabase)
+7. Click "Create security group"
+
+**IMPORTANT:** The outbound rule is critical for:
+- Downloading JAR from S3
+- Connecting to Supabase database
+- Installing packages during instance launch
 
 ### Step 5: Create Application Load Balancer (7 min)
 
@@ -216,13 +240,15 @@ systemctl restart nginx
 3. Protocol: HTTP
 4. Port: 80
 5. VPC: Default VPC
-6. Health check:
+6. **Health check settings:**
    - Protocol: HTTP
    - Path: `/actuator/health`
-   - Healthy threshold: 2
-   - Unhealthy threshold: 3
-   - Timeout: 5 seconds
+   - Port: Traffic port
+   - Healthy threshold: 2 (consecutive successful checks to mark healthy)
+   - Unhealthy threshold: 3 (consecutive failed checks to mark unhealthy)
+   - Timeout: 10 seconds (increased for slower responses)
    - Interval: 30 seconds
+   - Success codes: 200
 7. Click "Next"
 8. Don't register any targets yet
 9. Click "Create target group"
@@ -252,20 +278,22 @@ systemctl restart nginx
 - Load balancing: `Attach to an existing load balancer`
 - Choose from your load balancer target groups: `samaysetu-tg`
 - Health checks:
-  - Turn on `ELB health checks`
-  - Health check grace period: `300` seconds
+  - Turn on `ELB health checks` ✓
+  - Health check grace period: `600` seconds (10 minutes - gives app time to start)
 - Click "Next"
 
-**Step 4: Configure group size and scaling**
-- Desired capacity: `1`
-- Minimum capacity: `1`
-- Maximum capacity: `3`
+**Step 4: Configure group size and scaling (UPDATED FOR ZERO DOWNTIME)**
+- **Desired capacity:** `2` (run 2 instances for zero-downtime deployments)
+- **Minimum capacity:** `2` (always keep 2 instances running)
+- **Maximum capacity:** `3` (scale up to 3 during high traffic)
+
+**Why 2 instances?** During deployments, one instance can be replaced while the other continues serving traffic, ensuring zero downtime.
 
 **Scaling policies:**
 - Select: `Target tracking scaling policy`
 - Metric type: `Average CPU utilization`
 - Target value: `70`
-- Instances need: `300` seconds warm up
+- Instances need: `600` seconds warm up (10 minutes for app to fully start)
 
 Click "Next"
 
@@ -369,22 +397,22 @@ jobs:
         run: |
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
-
-      - name: Wait for deployment
-        run: |
-          echo "Waiting for instance refresh to complete..."
-          sleep 60
-          
-          # Check refresh status
-          aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-            --max-records 1
+            --preferences '{
+              "MinHealthyPercentage": 100,
+              "InstanceWarmup": 600,
+              "CheckpointPercentages": [50, 100],
+              "CheckpointDelay": 300
+            }' \
+            || echo "Instance refresh already in progress or not needed"
 
       - name: Deployment complete
         run: |
-          echo "✅ Deployment completed successfully!"
-          echo "Your application is now running on AWS"
+          echo "✅ JAR uploaded to S3 successfully!"
+          echo "Auto Scaling Group will pick up the new version automatically"
+          echo "Monitor progress at: AWS Console → EC2 → Target Groups → samaysetu-tg"
+          echo ""
+          echo "Test your deployment:"
+          echo "curl http://samaysetu-alb-1476674973.ap-south-1.elb.amazonaws.com/actuator/health"
 ```
 
 Commit and push this file:
@@ -438,19 +466,20 @@ curl http://YOUR-ALB-DNS-NAME/actuator/health
 
 ## How It Works
 
-### Automatic Deployment Flow:
+### Automatic Deployment Flow (ZERO DOWNTIME):
 
 1. **You push code** to `main` branch
 2. **GitHub Actions triggers:**
    - Checks out code
    - Builds JAR with Maven
    - Uploads JAR to S3
-   - Triggers Auto Scaling Group refresh
-3. **AWS Auto Scaling:**
-   - Launches new instance with updated code
-   - Waits for health checks to pass
-   - Terminates old instance
-   - Zero downtime deployment!
+   - Triggers Auto Scaling Group refresh with MinHealthyPercentage=100%
+3. **AWS Auto Scaling (Rolling Update):**
+   - Launches NEW instance with updated code (old instances still running)
+   - Waits for NEW instance to pass health checks (10 minutes)
+   - Only THEN terminates one OLD instance
+   - Repeats for remaining instances
+   - **ZERO DOWNTIME** - always have healthy instances serving traffic!
 
 ### Load Balancing:
 
@@ -458,13 +487,21 @@ curl http://YOUR-ALB-DNS-NAME/actuator/health
 - Health checks every 30 seconds
 - Automatically removes unhealthy instances
 - Routes traffic only to healthy instances
+- During deployment, traffic goes to healthy instances only
 
 ### Auto Scaling:
 
-- **Normal load:** 1 instance running
+- **Normal load:** 2 instances running (for zero-downtime deployments)
 - **High CPU (>70%):** Scales up to 3 instances
-- **Low CPU:** Scales down to 1 instance
+- **Low CPU:** Scales down to 2 instances (minimum)
 - Handles traffic spikes automatically
+
+### Why 2 Instances Minimum?
+
+- **Zero downtime deployments:** One instance can be replaced while other serves traffic
+- **High availability:** If one instance fails, the other continues serving
+- **Cost:** ~$16/month (or $0 during free tier) vs $8/month for 1 instance
+- **Worth it:** No downtime = better user experience!
 
 ---
 
@@ -549,21 +586,28 @@ git push origin main
 ## Cost Breakdown
 
 ### Free Tier (12 months):
-- ✅ EC2 t2.micro: 750 hours/month (FREE)
+- ✅ EC2 t2.micro: 750 hours/month (FREE) - covers 1 instance
+- ⚠️ EC2 2nd instance: ~$8/month (not covered by free tier)
 - ✅ Load Balancer: 750 hours/month (FREE)
 - ✅ S3: 5 GB storage (FREE)
 - ✅ Data transfer: 15 GB/month (FREE)
+- **Total during free tier: ~$8/month** (for 2nd instance)
 
 ### After Free Tier:
-- EC2 (1 instance): ~$8/month
+- EC2 (2 instances): ~$16/month
 - Load Balancer: ~$16/month
 - S3: ~$0.50/month
-- **Total: ~$25/month**
+- **Total: ~$32/month**
 
 ### During High Traffic (3 instances):
 - EC2 (3 instances): ~$24/month
 - Load Balancer: ~$16/month
 - **Total: ~$40/month**
+
+### Cost vs Benefit:
+- **With 1 instance:** $25/month, but 3-4 min downtime per deployment
+- **With 2 instances:** $32/month, ZERO downtime
+- **Extra cost:** $7/month for zero downtime = **Worth it!**
 
 ---
 
