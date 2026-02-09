@@ -306,8 +306,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🚀 Live Demo
 
-**Production URL**: Available after AWS deployment  
-**Login**: `admin@mitaoe.ac.in` / `admin123`
+**Production URL**: https://main.d1zrdw1tvru8th.amplifyapp.com
 
 ## 💰 Cost
 
