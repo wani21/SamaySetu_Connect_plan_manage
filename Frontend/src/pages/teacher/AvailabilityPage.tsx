@@ -3,174 +3,136 @@ import { FiCheck, FiX, FiSave, FiBook } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { timeSlotPublicAPI } from '../../services/api';
+import { Loading } from '../../components/common/Loading';
+import { teacherAPI, timetableAPI, timeSlotPublicAPI, academicYearPublicAPI, staffAPI } from '../../services/api';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_ENUM: Record<string, string> = {
+  Monday: 'MONDAY', Tuesday: 'TUESDAY', Wednesday: 'WEDNESDAY',
+  Thursday: 'THURSDAY', Friday: 'FRIDAY', Saturday: 'SATURDAY',
+};
 
 export const AvailabilityPage: React.FC = () => {
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  
   const [timeSlots, setTimeSlots] = useState<any[]>([]);
-  const [availability, setAvailability] = useState<any>({});
+  const [timetableEntries, setTimetableEntries] = useState<any[]>([]);
+  const [availability, setAvailability] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingSlots, setIsFetchingSlots] = useState(true);
+  const [isFetchingData, setIsFetchingData] = useState(true);
 
   useEffect(() => {
-    fetchTimeSlots();
+    fetchData();
   }, []);
 
-  const fetchTimeSlots = async () => {
+  const fetchData = async () => {
     try {
-      const response = await timeSlotPublicAPI.getAll();
-      const slots = Array.isArray(response.data) ? response.data : [];
-      // Filter out break times and sort by start time
+      setIsFetchingData(true);
+
+      // Fetch time slots, teacher profile, and academic years in parallel
+      const [slotsRes, profileRes, yearsRes] = await Promise.all([
+        timeSlotPublicAPI.getAll(),
+        teacherAPI.getProfile(),
+        academicYearPublicAPI.getAll(),
+      ]);
+
+      const slots = Array.isArray(slotsRes.data) ? slotsRes.data : [];
       const classSlots = slots
         .filter((slot: any) => !slot.isBreak)
         .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
       setTimeSlots(classSlots);
-      
-      // Initialize availability based on timetable
+
+      const teacher = profileRes.data;
+      const years = Array.isArray(yearsRes.data) ? yearsRes.data : [];
+      const currentYear = years.find((y: any) => y.isCurrent);
+
+      let entries: any[] = [];
+      if (teacher?.id && currentYear?.id) {
+        try {
+          const ttRes = await timetableAPI.getByTeacher(teacher.id, currentYear.id);
+          entries = Array.isArray(ttRes.data) ? ttRes.data : [];
+        } catch {
+          entries = [];
+        }
+      }
+      setTimetableEntries(entries);
+
+      // Initialize all slots as available by default
       initializeAvailability(classSlots);
     } catch (error) {
-      console.error('Failed to fetch time slots:', error);
+      if (import.meta.env.DEV) console.error('Failed to fetch availability data:', error);
       setTimeSlots([]);
     } finally {
-      setIsFetchingSlots(false);
+      setIsFetchingData(false);
     }
   };
 
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    return time.substring(0, 5); // Convert "HH:MM:SS" to "HH:MM"
+  const formatTime = (time: string) => (time ? time.substring(0, 5) : '');
+  const getSlotKey = (slot: any) => `${formatTime(slot.startTime)} - ${formatTime(slot.endTime)}`;
+
+  // Build timetable lookup: { "MONDAY-slotId": entry }
+  const timetableLookup: Record<string, any> = {};
+  timetableEntries.forEach((entry: any) => {
+    const key = `${entry.dayOfWeek}-${entry.timeSlot?.id}`;
+    if (key) timetableLookup[key] = entry;
+  });
+
+  const hasClass = (day: string, slotId: number) => {
+    return !!timetableLookup[`${DAY_ENUM[day]}-${slotId}`];
   };
 
-  const getSlotKey = (slot: any) => {
-    return `${formatTime(slot.startTime)} - ${formatTime(slot.endTime)}`;
+  const getClassInfo = (day: string, slotId: number) => {
+    return timetableLookup[`${DAY_ENUM[day]}-${slotId}`] || null;
   };
-
-  // Sample timetable - same as TimetablePage (should be fetched from API in production)
-  const getTimetable = () => {
-    if (timeSlots.length === 0) return {};
-    
-    const timetable: any = {};
-    
-    // Regular lectures (1 hour each)
-    if (timeSlots.length > 0) {
-      const slot1 = getSlotKey(timeSlots[0]);
-      timetable.Monday = { [slot1]: { subject: 'Data Structures', type: 'lecture' } };
-      timetable.Thursday = { [slot1]: { subject: 'Data Structures', type: 'lecture' } };
-    }
-    
-    if (timeSlots.length > 1) {
-      const slot2 = getSlotKey(timeSlots[1]);
-      timetable.Monday = { ...timetable.Monday, [slot2]: { subject: 'Algorithms', type: 'lecture' } };
-      timetable.Wednesday = { [slot2]: { subject: 'Software Engineering', type: 'lecture' } };
-      timetable.Friday = { [slot2]: { subject: 'Operating Systems', type: 'lecture' } };
-    }
-    
-    if (timeSlots.length > 2) {
-      const slot3 = getSlotKey(timeSlots[2]);
-      timetable.Tuesday = { [slot3]: { subject: 'Computer Networks', type: 'lecture' } };
-      timetable.Thursday = { ...timetable.Thursday, [slot3]: { subject: 'Algorithms', type: 'lecture' } };
-    }
-    
-    // Labs (2 hours - spanning 2 consecutive slots)
-    if (timeSlots.length > 4) {
-      const slot5 = getSlotKey(timeSlots[4]);
-      const slot6 = timeSlots.length > 5 ? getSlotKey(timeSlots[5]) : null;
-      
-      // Regular lectures
-      timetable.Monday = { ...timetable.Monday, [slot5]: { subject: 'Database Systems', type: 'lecture' } };
-      timetable.Wednesday = { ...timetable.Wednesday, [slot5]: { subject: 'Web Technologies', type: 'lecture' } };
-      timetable.Thursday = { ...timetable.Thursday, [slot5]: { subject: 'Database Systems', type: 'lecture' } };
-      
-      // Labs spanning 2 hours
-      timetable.Tuesday = { 
-        ...timetable.Tuesday, 
-        [slot5]: { subject: 'Data Structures Lab', type: 'lab' }
-      };
-      if (slot6) {
-        timetable.Tuesday = { ...timetable.Tuesday, [slot6]: 'SKIP' }; // Mark next slot as occupied
-      }
-      
-      timetable.Friday = { 
-        ...timetable.Friday, 
-        [slot5]: { subject: 'Database Lab', type: 'lab' }
-      };
-      if (slot6) {
-        timetable.Friday = { ...timetable.Friday, [slot6]: 'SKIP' }; // Mark next slot as occupied
-      }
-    }
-    
-    if (timeSlots.length > 6) {
-      const slot7 = getSlotKey(timeSlots[6]);
-      timetable.Wednesday = { ...timetable.Wednesday, [slot7]: { subject: 'Project Work', type: 'lecture' } };
-    }
-    
-    if (timeSlots.length > 0) {
-      const slot1 = getSlotKey(timeSlots[0]);
-      timetable.Saturday = { [slot1]: { subject: 'Seminar', type: 'lecture' } };
-    }
-    
-    return timetable;
-  };
-
-  const timetable = getTimetable();
 
   const initializeAvailability = (slots: any[]) => {
-    // Initialize all slots as available by default
-    const initialAvailability: any = {};
-    days.forEach((day) => {
+    const initial: Record<string, boolean> = {};
+    DAYS.forEach((day) => {
       slots.forEach((slot) => {
-        const slotKey = getSlotKey(slot);
-        initialAvailability[`${day}-${slotKey}`] = true;
+        initial[`${day}-${slot.id}`] = true;
       });
     });
-    setAvailability(initialAvailability);
+    setAvailability(initial);
   };
 
-  const hasClass = (day: string, slotKey: string) => {
-    const classData = timetable[day]?.[slotKey];
-    return classData !== undefined && classData !== 'SKIP';
-  };
-
-  const getClassInfo = (day: string, slotKey: string) => {
-    const classData = timetable[day]?.[slotKey];
-    return classData === 'SKIP' ? null : classData;
-  };
-
-  const isSkippedSlot = (day: string, slotKey: string) => {
-    return timetable[day]?.[slotKey] === 'SKIP';
-  };
-
-  const toggleAvailability = (day: string, slotKey: string) => {
-    // Don't allow toggling if there's a class scheduled
-    if (hasClass(day, slotKey)) {
+  const toggleAvailability = (day: string, slotId: number) => {
+    if (hasClass(day, slotId)) {
       toast.error('Cannot change availability - you have a class scheduled at this time');
       return;
     }
-    
-    const key = `${day}-${slotKey}`;
-    setAvailability((prev: any) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    const key = `${day}-${slotId}`;
+    setAvailability((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const isAvailable = (day: string, slotId: number) => {
+    return availability[`${day}-${slotId}`] || false;
   };
 
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      // API call would go here
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Convert availability map to backend format
+      const entries: any[] = [];
+      for (const slot of timeSlots) {
+        for (const day of DAYS) {
+          const dayEnum = DAY_ENUM[day];
+          const key = `${day}-${slot.id}`;
+          entries.push({
+            dayOfWeek: dayEnum,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            isAvailable: availability[key] || false,
+          });
+        }
+      }
+      await staffAPI.saveAvailability(entries);
       toast.success('Availability updated successfully!');
-    } catch (error) {
+    } catch {
       toast.error('Failed to update availability');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isAvailable = (day: string, slotKey: string) => {
-    return availability[`${day}-${slotKey}`] || false;
-  };
+  if (isFetchingData) return <Loading />;
 
   return (
     <div>
@@ -193,15 +155,15 @@ export const AvailabilityPage: React.FC = () => {
       {/* Instructions */}
       <Card className="mb-6 bg-blue-50 border border-blue-200">
         <div className="flex items-start gap-3">
-          <div className="text-blue-600 text-2xl">ℹ️</div>
+          <div className="text-blue-600 text-2xl">i</div>
           <div>
             <p className="font-medium text-blue-900 mb-1">How to use:</p>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• <span className="font-semibold text-blue-900">Blue slots</span> - You have a class scheduled (cannot be changed)</li>
-              <li>• <span className="font-semibold text-green-700">Green slots</span> - You are available for classes</li>
-              <li>• <span className="font-semibold text-red-700">Red slots</span> - You are not available</li>
-              <li>• Click on green/red slots to toggle your availability</li>
-              <li>• Don't forget to save your changes!</li>
+              <li>- <span className="font-semibold text-blue-900">Blue slots</span> - You have a class scheduled (cannot be changed)</li>
+              <li>- <span className="font-semibold text-green-700">Green slots</span> - You are available for classes</li>
+              <li>- <span className="font-semibold text-red-700">Red slots</span> - You are not available</li>
+              <li>- Click on green/red slots to toggle your availability</li>
+              <li>- Don't forget to save your changes!</li>
             </ul>
           </div>
         </div>
@@ -209,11 +171,7 @@ export const AvailabilityPage: React.FC = () => {
 
       {/* Availability Grid */}
       <Card>
-        {isFetchingSlots ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Loading time slots...</p>
-          </div>
-        ) : timeSlots.length === 0 ? (
+        {timeSlots.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500">No time slots configured. Please contact admin.</p>
           </div>
@@ -223,7 +181,7 @@ export const AvailabilityPage: React.FC = () => {
               <thead>
                 <tr className="bg-primary-800 text-white">
                   <th className="border border-gray-300 p-3 text-left font-semibold">Time</th>
-                  {days.map((day) => (
+                  {DAYS.map((day) => (
                     <th key={day} className="border border-gray-300 p-3 text-center font-semibold">
                       {day}
                     </th>
@@ -241,30 +199,18 @@ export const AvailabilityPage: React.FC = () => {
                           <div className="text-xs text-gray-500">{slot.slotName}</div>
                         </div>
                       </td>
-                      {days.map((day) => {
-                        const skipped = isSkippedSlot(day, slotKey);
-                        
-                        // Don't render cell if it's part of a multi-hour class
-                        if (skipped) {
-                          return null;
-                        }
-                        
-                        const hasScheduledClass = hasClass(day, slotKey);
-                        const classInfo = getClassInfo(day, slotKey);
-                        const available = isAvailable(day, slotKey);
-                        const isLab = classInfo?.type === 'lab';
-                        
+                      {DAYS.map((day) => {
+                        const hasScheduledClass = hasClass(day, slot.id);
+                        const classInfo = getClassInfo(day, slot.id);
+                        const available = isAvailable(day, slot.id);
+                        const isLab = classInfo?.course?.courseType === 'LAB';
+
                         return (
-                          <td 
-                            key={`${day}-${slot.id}`} 
-                            className="border border-gray-300 p-2"
-                            rowSpan={isLab ? 2 : 1}
-                          >
+                          <td key={`${day}-${slot.id}`} className="border border-gray-300 p-2">
                             {hasScheduledClass ? (
-                              // Show scheduled class - cannot be changed
                               <div className={`w-full h-20 rounded-lg border-2 flex items-center justify-center cursor-not-allowed ${
-                                isLab 
-                                  ? 'bg-purple-100 border-purple-500' 
+                                isLab
+                                  ? 'bg-purple-100 border-purple-500'
                                   : 'bg-blue-100 border-blue-500'
                               }`}>
                                 <div className="text-center">
@@ -274,19 +220,18 @@ export const AvailabilityPage: React.FC = () => {
                                   <span className={`text-xs font-medium block ${
                                     isLab ? 'text-purple-700' : 'text-blue-700'
                                   }`}>
-                                    {classInfo?.subject}
+                                    {classInfo?.course?.name || 'Class'}
                                   </span>
                                   <span className={`text-xs ${
                                     isLab ? 'text-purple-600' : 'text-blue-600'
                                   }`}>
-                                    {isLab ? '🔬 Lab' : 'Scheduled'}
+                                    {isLab ? 'Lab' : 'Scheduled'}
                                   </span>
                                 </div>
                               </div>
                             ) : (
-                              // Allow toggling availability
                               <button
-                                onClick={() => toggleAvailability(day, slotKey)}
+                                onClick={() => toggleAvailability(day, slot.id)}
                                 className={`w-full h-20 rounded-lg transition-all flex items-center justify-center ${
                                   available
                                     ? 'bg-green-100 hover:bg-green-200 border-2 border-green-500'
@@ -323,17 +268,15 @@ export const AvailabilityPage: React.FC = () => {
         <Button
           variant="outline"
           onClick={() => {
-            const allAvailable: any = {};
-            days.forEach((day) => {
+            const allAvailable: Record<string, boolean> = {};
+            DAYS.forEach((day) => {
               timeSlots.forEach((slot) => {
-                const slotKey = getSlotKey(slot);
-                // Only mark as available if no class is scheduled
-                if (!hasClass(day, slotKey)) {
-                  allAvailable[`${day}-${slotKey}`] = true;
+                if (!hasClass(day, slot.id)) {
+                  allAvailable[`${day}-${slot.id}`] = true;
                 }
               });
             });
-            setAvailability((prev: any) => ({ ...prev, ...allAvailable }));
+            setAvailability((prev) => ({ ...prev, ...allAvailable }));
             toast.success('Marked all free slots as available');
           }}
           className="w-full"
@@ -343,17 +286,15 @@ export const AvailabilityPage: React.FC = () => {
         <Button
           variant="outline"
           onClick={() => {
-            const allUnavailable: any = {};
-            days.forEach((day) => {
+            const allUnavailable: Record<string, boolean> = {};
+            DAYS.forEach((day) => {
               timeSlots.forEach((slot) => {
-                const slotKey = getSlotKey(slot);
-                // Only mark as unavailable if no class is scheduled
-                if (!hasClass(day, slotKey)) {
-                  allUnavailable[`${day}-${slotKey}`] = false;
+                if (!hasClass(day, slot.id)) {
+                  allUnavailable[`${day}-${slot.id}`] = false;
                 }
               });
             });
-            setAvailability((prev: any) => ({ ...prev, ...allUnavailable }));
+            setAvailability((prev) => ({ ...prev, ...allUnavailable }));
             toast.success('Marked all free slots as unavailable');
           }}
           className="w-full"

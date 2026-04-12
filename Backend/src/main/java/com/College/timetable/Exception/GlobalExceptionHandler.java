@@ -3,6 +3,8 @@ package com.College.timetable.Exception;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +17,12 @@ import jakarta.persistence.EntityNotFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+	private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+		// Log the full exception details server-side for debugging
+		logger.error("DataIntegrityViolationException occurred", ex);
 		Map<String, String> error = new HashMap<>();
 		String message = ex.getMessage();
 		
@@ -90,6 +96,7 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(EntityNotFoundException.class)
 	public ResponseEntity<Map<String, String>> handleEntityNotFound(EntityNotFoundException ex) {
+		logger.warn("EntityNotFoundException occurred: {}", ex.getMessage());
 		Map<String, String> error = new HashMap<>();
 		error.put("message", ex.getMessage());
 		error.put("status", "404");
@@ -98,22 +105,24 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<Map<String, Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+		logger.warn("Validation failed for request");
 		Map<String, Object> errors = new HashMap<>();
 		Map<String, String> fieldErrors = new HashMap<>();
-		
+
 		ex.getBindingResult().getFieldErrors().forEach(error -> {
 			fieldErrors.put(error.getField(), error.getDefaultMessage());
 		});
-		
+
 		errors.put("message", "Validation failed");
 		errors.put("errors", fieldErrors);
 		errors.put("status", "400");
-		
+
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)
 	public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+		logger.warn("IllegalArgumentException occurred: {}", ex.getMessage());
 		Map<String, String> error = new HashMap<>();
 		error.put("message", ex.getMessage());
 		error.put("status", "400");
@@ -122,8 +131,11 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<Map<String, String>> handleGenericException(Exception ex) {
+		// Log full exception server-side at ERROR level
+		logger.error("Unexpected exception occurred", ex);
 		Map<String, String> error = new HashMap<>();
-		error.put("message", "An unexpected error occurred: " + ex.getMessage());
+		// Return generic message to client instead of exposing internal details
+		error.put("message", "An unexpected error occurred. Please try again later.");
 		error.put("status", "500");
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
 	}

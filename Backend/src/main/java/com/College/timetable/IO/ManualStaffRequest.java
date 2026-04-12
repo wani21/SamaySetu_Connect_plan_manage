@@ -34,4 +34,11 @@ public class ManualStaffRequest {
     @NotNull(message = "Maximum weekly hours is required")
     @Min(value = 1, message = "Maximum weekly hours must be at least 1")
     private Integer maxWeeklyHours;
+
+    // Role: TEACHER (default), HOD, TIMETABLE_COORDINATOR
+    // ADMIN role must be created separately via DataInitializer or direct DB
+    private String role;
+
+    // Department ID (optional — can be assigned later)
+    private Long departmentId;
 }

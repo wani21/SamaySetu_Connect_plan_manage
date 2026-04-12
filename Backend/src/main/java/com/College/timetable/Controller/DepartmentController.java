@@ -22,7 +22,7 @@ import com.College.timetable.Service.DepartmentService;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("admin/api/departments")
+@RequestMapping("/admin/api/departments")
 public class DepartmentController {
 	
 	private static final Logger log = LoggerFactory.getLogger(DepartmentController.class);

@@ -16,7 +16,8 @@ export const ProfilePage: React.FC = () => {
     phone: '',
     employeeId: '',
     specialization: '',
-    weeklyHoursLimit: '25',
+    minWeeklyHours: '10',
+    maxWeeklyHours: '30',
     department: null as any,
   });
 
@@ -44,9 +45,8 @@ export const ProfilePage: React.FC = () => {
         phone: data.phone || '',
         employeeId: data.employeeId || '',
         specialization: data.specialization || '',
-        weeklyHoursLimit: data.minWeeklyHours && data.maxWeeklyHours 
-          ? `${data.minWeeklyHours} - ${data.maxWeeklyHours} hours` 
-          : '10 - 30 hours',
+        minWeeklyHours: data.minWeeklyHours?.toString() || '10',
+        maxWeeklyHours: data.maxWeeklyHours?.toString() || '30',
         department: data.department,
       });
     } catch (error: any) {
@@ -64,7 +64,7 @@ export const ProfilePage: React.FC = () => {
       const updateData = {
         phone: profileData.phone,
         specialization: profileData.specialization,
-        // Don't include password unless changing it
+        // Weekly hours are admin-managed — teachers cannot change them
       };
       
       await staffAPI.updateProfile(updateData);
@@ -224,7 +224,7 @@ export const ProfilePage: React.FC = () => {
               <Input
                 label="Weekly Hours Range"
                 type="text"
-                value={profileData.weeklyHoursLimit}
+                value={`${profileData.minWeeklyHours} - ${profileData.maxWeeklyHours} hours`}
                 disabled
               />
             </div>
@@ -296,7 +296,7 @@ export const ProfilePage: React.FC = () => {
         <Card>
           <div className="text-center">
             <p className="text-3xl font-bold text-primary-800 mb-1">
-              {profileData.weeklyHoursLimit || '10 - 30 hours'}
+              {profileData.minWeeklyHours} - {profileData.maxWeeklyHours}
             </p>
             <p className="text-sm text-gray-600">Weekly Hours Range</p>
           </div>

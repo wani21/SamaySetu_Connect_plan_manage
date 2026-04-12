@@ -8,21 +8,23 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ChangeFirstPasswordPage } from './pages/ChangeFirstPasswordPage';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { ProtectedRoute, getHomePath } from './components/auth/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
+import ErrorBoundary from './components/common/ErrorBoundary';
+
+// Roles that use admin-style dashboard layout
+const ADMIN_LAYOUT_ROLES = ['ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
 
 function App() {
   const { isAuthenticated, user, _hasHydrated } = useAuthStore();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // Wait for store to hydrate before rendering
     if (_hasHydrated) {
       setIsReady(true);
     }
   }, [_hasHydrated]);
 
-  // Show loading while hydrating
   if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -35,42 +37,44 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* Public Routes */}
-      <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to={user?.role === 'ADMIN' ? "/admin/dashboard" : "/dashboard"} /> : <LoginPage />}
-      />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/change-first-password" element={<ChangeFirstPasswordPage />} />
+    <ErrorBoundary>
+      <Routes>
+        {/* Public Routes */}
+        <Route
+          path="/login"
+          element={isAuthenticated ? <Navigate to={getHomePath(user?.role)} /> : <LoginPage />}
+        />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/change-first-password" element={<ChangeFirstPasswordPage />} />
 
-      {/* Teacher Routes */}
-      <Route
-        path="/dashboard/*"
-        element={
-          <ProtectedRoute requiredRole="TEACHER">
-            <TeacherDashboard />
-          </ProtectedRoute>
-        }
-      />
+        {/* Teacher Routes (TEACHER role only) */}
+        <Route
+          path="/dashboard/*"
+          element={
+            <ProtectedRoute allowedRoles={['TEACHER']}>
+              <TeacherDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Admin Routes */}
-      <Route
-        path="/admin/*"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AdminDashboard />
-          </ProtectedRoute>
-        }
-      />
+        {/* Admin-Layout Routes (ADMIN, HOD, TIMETABLE_COORDINATOR) */}
+        <Route
+          path="/admin/*"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_LAYOUT_ROLES}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Default Route */}
-      <Route path="/" element={<Navigate to={isAuthenticated ? (user?.role === 'ADMIN' ? "/admin/dashboard" : "/dashboard") : "/login"} />} />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+        {/* Default Route */}
+        <Route path="/" element={<Navigate to={isAuthenticated ? getHomePath(user?.role) : "/login"} />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

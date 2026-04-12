@@ -66,7 +66,7 @@ public class Student {
 	private Timestamp updatedAt;
 
 	// Relationships
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "division_id")
 	private Division division;
 }

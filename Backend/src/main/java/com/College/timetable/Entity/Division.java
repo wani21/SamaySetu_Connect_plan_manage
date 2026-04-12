@@ -82,12 +82,14 @@ public class Division {
 	private Timestamp updatedAt;
 
 	// Relationships
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "department_id", nullable = false)
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"teachers", "courses", "rooms", "divisions"})
 	private DepartmentEntity department;
 
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "academic_year_id", nullable = false)
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"divisions", "timetableEntries", "departments"})
 	private AcademicYear academicYear;
 
 	@OneToMany(mappedBy = "division", cascade = CascadeType.ALL)

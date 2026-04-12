@@ -14,40 +14,57 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.College.timetable.Entity.AcademicYear;
-import com.College.timetable.Service.AcadamicService;
+import com.College.timetable.Service.AcademicService;
 
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("admin/api/academic-years")
-public class AcadamicController {
-	
+public class AcademicController {
+
 	@Autowired
-	private AcadamicService academicService;
-	
-	@PostMapping
+	private AcademicService academicService;
+
+	// ── Public endpoint (teachers + admins) ──
+	// Accessible to any authenticated user — needed by teacher dashboard, timetable, availability pages
+	@GetMapping("/api/academic-years")
+	public ResponseEntity<List<AcademicYear>> getAcademicYearsPublic() {
+		return ResponseEntity.ok(academicService.getAll());
+	}
+
+	@GetMapping("/api/academic-years/current")
+	public ResponseEntity<AcademicYear> getCurrentAcademicYearPublic() {
+		return ResponseEntity.ok(
+			academicService.getAll().stream()
+				.filter(y -> Boolean.TRUE.equals(y.getIsCurrent()))
+				.findFirst()
+				.orElse(null)
+		);
+	}
+
+	// ── Admin-only endpoints ──
+	@PostMapping("/admin/api/academic-years")
 	public ResponseEntity<AcademicYear> addAcademicYear(@Valid @RequestBody AcademicYear aca) {
-		AcademicYear saved = academicService.addAcadamic(aca);
+		AcademicYear saved = academicService.addAcademic(aca);
 		return ResponseEntity.ok(saved);
 	}
-	
-	@GetMapping
+
+	@GetMapping("/admin/api/academic-years")
 	public ResponseEntity<List<AcademicYear>> getAllAcademicYears() {
 		return ResponseEntity.ok(academicService.getAll());
 	}
-	
-	@GetMapping("/{id}")
+
+	@GetMapping("/admin/api/academic-years/{id}")
 	public ResponseEntity<AcademicYear> getAcademicYearById(@PathVariable Long id) {
 		return ResponseEntity.ok(academicService.getById(id));
 	}
-	
-	@PutMapping("/{id}")
+
+	@PutMapping("/admin/api/academic-years/{id}")
 	public ResponseEntity<AcademicYear> updateAcademicYear(@PathVariable Long id, @Valid @RequestBody AcademicYear aca) {
 		AcademicYear updated = academicService.update(id, aca);
 		return ResponseEntity.ok(updated);
 	}
-	
-	@DeleteMapping("/{id}")
+
+	@DeleteMapping("/admin/api/academic-years/{id}")
 	public ResponseEntity<String> deleteAcademicYear(@PathVariable Long id) {
 		academicService.delete(id);
 		return ResponseEntity.ok("Academic year deleted successfully");

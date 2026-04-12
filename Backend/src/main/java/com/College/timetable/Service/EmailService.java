@@ -1,5 +1,7 @@
 package com.College.timetable.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -13,25 +15,30 @@ import jakarta.mail.internet.MimeMessage;
 @Service
 public class EmailService {
 
+	private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
+
     @Autowired
     private JavaMailSender mailSender;
 
     @Value("${spring.mail.username}")
     private String fromEmail;
-    
+
     @Value("${app.email.from-name:SamaySetu Admin}")
     private String fromName;
 
     @Value("${app.base-url}")
     private String baseUrl;
 
+    @Value("${app.frontend.url:http://localhost:5173}")
+    private String frontendUrl;
+
     public void sendVerificationEmail(String toEmail, String token) {
         String verificationUrl = baseUrl + "/auth/verify-email?token=" + token;
-        
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            
+
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
             helper.setSubject("SamaySetu - Email Verification");
@@ -44,29 +51,35 @@ public class EmailService {
                     "Best regards,\n" +
                     "SamaySetu Team\n" +
                     "MIT Academy of Engineering, Alandi(D), Pune");
-            
+
             mailSender.send(mimeMessage);
         } catch (Exception e) {
-            // Fallback to simple message if MimeMessage fails
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(toEmail);
-            message.setSubject("SamaySetu - Email Verification");
-            message.setText("Dear Teacher,\n\n" +
-                    "Thank you for registering with SamaySetu Timetable Management System.\n\n" +
-                    "Please verify your email address by clicking the link below:\n" +
-                    verificationUrl + "\n\n" +
-                    "This link will expire in 24 hours.\n\n" +
-                    "If you did not register for this account, please ignore this email.\n\n" +
-                    "Best regards,\n" +
-                    "SamaySetu Team");
-            mailSender.send(message);
+            // Log error for debugging
+            logger.error("Failed to send verification email via MimeMessage to {}: {}", toEmail, e.getMessage());
+            try {
+                // Fallback to simple message if MimeMessage fails
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setFrom(fromEmail);
+                message.setTo(toEmail);
+                message.setSubject("SamaySetu - Email Verification");
+                message.setText("Dear Teacher,\n\n" +
+                        "Thank you for registering with SamaySetu Timetable Management System.\n\n" +
+                        "Please verify your email address by clicking the link below:\n" +
+                        verificationUrl + "\n\n" +
+                        "This link will expire in 24 hours.\n\n" +
+                        "If you did not register for this account, please ignore this email.\n\n" +
+                        "Best regards,\n" +
+                        "SamaySetu Team");
+                mailSender.send(message);
+            } catch (Exception fallbackError) {
+                logger.error("Failed to send verification email via SimpleMailMessage to {}: {}", toEmail, fallbackError.getMessage());
+            }
         }
     }
 
     public void sendPasswordResetEmail(String toEmail, String token) {
         // Point to frontend reset password page instead of backend endpoint
-        String resetUrl = "http://localhost:5173/reset-password?token=" + token;
+        String resetUrl = frontendUrl + "/reset-password?token=" + token;
         
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
@@ -140,25 +153,31 @@ public class EmailService {
             
             mailSender.send(mimeMessage);
         } catch (Exception e) {
-            // Fallback to simple message
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(toEmail);
-            message.setSubject("🔐 SamaySetu - Password Reset Request");
-            message.setText("Dear Teacher,\n\n" +
-                    "We received a request to reset your password for your SamaySetu account.\n\n" +
-                    "Please click the link below to reset your password:\n" +
-                    resetUrl + "\n\n" +
-                    "⚠️ IMPORTANT:\n" +
-                    "• This link will expire in 1 hour for your security\n" +
-                    "• If you didn't request this reset, please ignore this email\n" +
-                    "• Your password will remain unchanged until you create a new one\n\n" +
-                    "If you have any issues, please contact the administrator.\n\n" +
-                    "Best regards,\n" +
-                    "SamaySetu Team\n" +
-                    "MIT Academy of Engineering, Alandi(D), Pune\n\n" +
-                    "This is an automated message. Please do not reply to this email.");
-            mailSender.send(message);
+            // Log error for debugging
+            logger.error("Failed to send password reset email via MimeMessage to {}: {}", toEmail, e.getMessage());
+            try {
+                // Fallback to simple message
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setFrom(fromEmail);
+                message.setTo(toEmail);
+                message.setSubject("🔐 SamaySetu - Password Reset Request");
+                message.setText("Dear Teacher,\n\n" +
+                        "We received a request to reset your password for your SamaySetu account.\n\n" +
+                        "Please click the link below to reset your password:\n" +
+                        resetUrl + "\n\n" +
+                        "⚠️ IMPORTANT:\n" +
+                        "• This link will expire in 1 hour for your security\n" +
+                        "• If you didn't request this reset, please ignore this email\n" +
+                        "• Your password will remain unchanged until you create a new one\n\n" +
+                        "If you have any issues, please contact the administrator.\n\n" +
+                        "Best regards,\n" +
+                        "SamaySetu Team\n" +
+                        "MIT Academy of Engineering, Alandi(D), Pune\n\n" +
+                        "This is an automated message. Please do not reply to this email.");
+                mailSender.send(message);
+            } catch (Exception fallbackError) {
+                logger.error("Failed to send password reset email via SimpleMailMessage to {}: {}", toEmail, fallbackError.getMessage());
+            }
         }
     }
 
@@ -166,7 +185,7 @@ public class EmailService {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            
+
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
             helper.setSubject("Welcome to SamaySetu!");
@@ -177,21 +196,27 @@ public class EmailService {
                     "Best regards,\n" +
                     "SamaySetu Team\n" +
                     "MIT Academy of Engineering, Alandi(D), Pune");
-            
+
             mailSender.send(mimeMessage);
         } catch (Exception e) {
-            // Fallback to simple message
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(toEmail);
-            message.setSubject("Welcome to SamaySetu!");
-            message.setText("Dear " + name + ",\n\n" +
-                    "Your email has been successfully verified!\n\n" +
-                    "Your account is pending admin approval. Please wait for approval.\n\n" +
-                    "Once approved, You can log in to SamaySetu Timetable Management System.\n\n" +
-                    "Best regards,\n" +
-                    "SamaySetu Team");
-            mailSender.send(message);
+            // Log error for debugging
+            logger.error("Failed to send welcome email via MimeMessage to {}: {}", toEmail, e.getMessage());
+            try {
+                // Fallback to simple message
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setFrom(fromEmail);
+                message.setTo(toEmail);
+                message.setSubject("Welcome to SamaySetu!");
+                message.setText("Dear " + name + ",\n\n" +
+                        "Your email has been successfully verified!\n\n" +
+                        "Your account is pending admin approval. Please wait for approval.\n\n" +
+                        "Once approved, You can log in to SamaySetu Timetable Management System.\n\n" +
+                        "Best regards,\n" +
+                        "SamaySetu Team");
+                mailSender.send(message);
+            } catch (Exception fallbackError) {
+                logger.error("Failed to send welcome email via SimpleMailMessage to {}: {}", toEmail, fallbackError.getMessage());
+            }
         }
     }
     
@@ -199,22 +224,22 @@ public class EmailService {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            
+
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
             helper.setSubject("SamaySetu - Account Approved!");
             helper.setText("Dear " + name + ",\n\n" +
                     "Great news! Your SamaySetu account has been approved by the administrator.\n\n" +
                     "You can now login and access the timetable management system:\n" +
-                    "http://localhost:5173/login\n\n" +
+                    frontendUrl + "/login\n\n" +
                     "Welcome to SamaySetu!\n\n" +
                     "Best regards,\n" +
                     "SamaySetu Team\n" +
                     "MIT Academy of Engineering, Alandi(D), Pune");
-            
+
             mailSender.send(mimeMessage);
         } catch (Exception e) {
-            System.err.println("Failed to send approval email: " + e.getMessage());
+            logger.error("Failed to send approval email to {}: {}", toEmail, e.getMessage());
         }
     }
     
@@ -222,7 +247,7 @@ public class EmailService {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            
+
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
             helper.setSubject("SamaySetu - Account Application Status");
@@ -234,10 +259,10 @@ public class EmailService {
                     "Best regards,\n" +
                     "SamaySetu Team\n" +
                     "MIT Academy of Engineering, Alandi(D), Pune");
-            
+
             mailSender.send(mimeMessage);
         } catch (Exception e) {
-            System.err.println("Failed to send rejection email: " + e.getMessage());
+            logger.error("Failed to send rejection email to {}: {}", toEmail, e.getMessage());
         }
     }
 }

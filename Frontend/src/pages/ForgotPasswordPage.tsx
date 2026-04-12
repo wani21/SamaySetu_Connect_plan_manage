@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { authAPI } from '../services/api';
+import { APP_CONFIG } from '../constants';
 import logo from '../assets/logo.png';
 import bannerVideo from '../assets/banner_video1.mp4';
 
@@ -24,8 +25,8 @@ export const ForgotPasswordPage: React.FC = () => {
     if (!email) {
       return 'Email is required';
     }
-    if (!email.endsWith('@mitaoe.ac.in')) {
-      return 'Please use your college email (@mitaoe.ac.in)';
+    if (!email.endsWith(APP_CONFIG.COLLEGE_EMAIL_DOMAIN)) {
+      return `Please use your college email (${APP_CONFIG.COLLEGE_EMAIL_DOMAIN})`;
     }
     return '';
   };
@@ -155,7 +156,7 @@ export const ForgotPasswordPage: React.FC = () => {
                       onChange={handleChange}
                       error={error}
                       icon={<FiMail />}
-                      placeholder="your.email@mitaoe.ac.in"
+                      placeholder={`your.email${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}`}
                       autoComplete="email"
                     />
 

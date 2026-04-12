@@ -80,7 +80,7 @@ export const ResetPasswordPage: React.FC = () => {
     try {
       await authAPI.resetPassword({
         token,
-        newPassword: formData.newPassword,
+        password: formData.newPassword,
       });
       
       toast.success('Password reset successful! You can now login.');

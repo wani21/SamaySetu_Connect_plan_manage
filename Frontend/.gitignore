@@ -1,3 +1,13 @@
+# Environment files
+# Never commit actual .env files with credentials
+# Only commit .env.example as template
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+# .env.example is allowed and should be tracked
+
 # Logs
 logs
 *.log

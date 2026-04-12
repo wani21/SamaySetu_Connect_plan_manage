@@ -7,6 +7,7 @@ import { Input } from '../../components/common/Input';
 import { useAuthStore } from '../../store/authStore';
 import { teacherAPI } from '../../services/api';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { APP_CONFIG } from '../../constants';
 
 export const AdminProfilePage: React.FC = () => {
   const { user } = useAuthStore();
@@ -181,7 +182,7 @@ export const AdminProfilePage: React.FC = () => {
                 value={formData.email}
                 disabled
                 icon={<FiMail />}
-                placeholder="admin@mitaoe.ac.in"
+                placeholder={`admin${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}`}
               />
 
               <Input

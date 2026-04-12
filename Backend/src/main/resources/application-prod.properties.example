@@ -1,0 +1,90 @@
+# Production Profile Configuration Example
+# Active when: spring.profiles.active=prod
+# CRITICAL SECURITY NOTE:
+# - All sensitive credentials MUST be provided via environment variables
+# - This file should NOT contain any real credentials
+# - The application WILL FAIL TO START if required env vars are not set
+# - Set these environment variables in your deployment platform (AWS, Docker, etc.):
+#   - SPRING_DATASOURCE_URL
+#   - SPRING_DATASOURCE_USERNAME
+#   - SPRING_DATASOURCE_PASSWORD
+#   - JWT_SECRET_KEY
+#   - EMAIL_USERNAME
+#   - EMAIL_PASSWORD
+#   - APP_BASE_URL
+
+spring.application.name=samaysetu
+
+# Production Database Configuration
+# REQUIRED: Set via environment variables - will FAIL if not provided
+spring.datasource.url=${SPRING_DATASOURCE_URL}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# JPA Configuration for PostgreSQL
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.show-sql=false
+spring.jpa.properties.hibernate.format_sql=false
+spring.jpa.properties.hibernate.jdbc.lob.non_contextual_creation=true
+
+# Connection Pool Settings (HikariCP) - Optimized for production
+spring.datasource.hikari.maximum-pool-size=20
+spring.datasource.hikari.minimum-idle=10
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=600000
+spring.datasource.hikari.max-lifetime=1800000
+spring.datasource.hikari.connection-test-query=SELECT 1
+spring.datasource.hikari.leak-detection-threshold=60000
+
+# JWT Configuration
+# REQUIRED: Set via environment variable - will FAIL if not provided
+jwt.secret.key=${JWT_SECRET_KEY}
+
+# Server Configuration
+server.port=${PORT:8080}
+
+# Email Configuration (Gmail SMTP)
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=${EMAIL_USERNAME}
+spring.mail.password=${EMAIL_PASSWORD}
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+
+# Email Sender Display Name
+app.email.from-name=SamaySetu Admin
+
+# Application Base URL (Production)
+# REQUIRED: Set via environment variable
+app.base-url=${APP_BASE_URL}
+
+# Logging Configuration (Production - Less verbose)
+logging.level.root=INFO
+logging.level.com.College.timetable=INFO
+logging.level.org.hibernate.SQL=WARN
+logging.level.org.springframework.web=INFO
+
+# Security Headers
+server.error.include-message=always
+server.error.include-binding-errors=never
+server.error.include-stacktrace=never
+server.error.include-exception=false
+
+# Actuator Configuration
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.show-details=when-authorized
+management.health.defaults.enabled=true
+
+# Redis Configuration (Production)
+# OPTIONAL: Use managed Redis service in production
+spring.data.redis.host=${REDIS_HOST:localhost}
+spring.data.redis.port=${REDIS_PORT:6379}
+spring.data.redis.password=${REDIS_PASSWORD}
+
+# Cache Configuration
+spring.cache.type=redis
+spring.cache.redis.time-to-live=3600000
+spring.cache.redis.cache-null-values=false

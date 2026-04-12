@@ -29,12 +29,8 @@ export const AcademicYearsPage: React.FC = () => {
   const fetchAcademicYears = async () => {
     try {
       const response = await academicYearAPI.getAll();
-      console.log('Academic Years API Response:', response);
-      console.log('Academic Years Data:', response.data);
-      console.log('Is Array?', Array.isArray(response.data));
       setAcademicYears(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error('Failed to fetch academic years:', error);
       toast.error('Failed to fetch academic years');
       setAcademicYears([]); // Set empty array on error
     }
@@ -91,7 +87,6 @@ export const AcademicYearsPage: React.FC = () => {
     } catch (error: any) {
       const errorMessage = getErrorMessage(error);
       toast.error(errorMessage, { duration: 5000 });
-      console.error('Academic year operation error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -109,7 +104,6 @@ export const AcademicYearsPage: React.FC = () => {
     } catch (error: any) {
       const errorMessage = getErrorMessage(error);
       toast.error(errorMessage, { duration: 5000 });
-      console.error('Academic year deletion error:', error);
     }
   };
 

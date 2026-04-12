@@ -7,6 +7,7 @@ import { Input } from '../common/Input';
 import { Modal } from '../common/Modal';
 import { adminAPI, teacherAdminAPI, departmentAPI } from '../../services/api';
 import { getErrorMessage } from '../../utils/errorHandler';
+import { APP_CONFIG } from '../../constants';
 
 export const StaffManagementPage: React.FC = () => {
   const [staff, setStaff] = useState<any[]>([]);
@@ -34,6 +35,7 @@ export const StaffManagementPage: React.FC = () => {
     minWeeklyHours: '10',
     maxWeeklyHours: '30',
     departmentId: '',
+    role: 'TEACHER',
   });
   const [errors, setErrors] = useState<any>({});
 
@@ -128,6 +130,7 @@ export const StaffManagementPage: React.FC = () => {
       minWeeklyHours: '10',
       maxWeeklyHours: '30',
       departmentId: '',
+      role: 'TEACHER',
     });
     setEditingStaff(null);
     setIsEditMode(false);
@@ -146,6 +149,7 @@ export const StaffManagementPage: React.FC = () => {
       minWeeklyHours: staffMember.minWeeklyHours?.toString() || '10',
       maxWeeklyHours: staffMember.maxWeeklyHours?.toString() || '30',
       departmentId: staffMember.department?.id?.toString() || '',
+      role: staffMember.role || 'TEACHER',
     });
     setShowModal(true);
   };
@@ -157,7 +161,7 @@ export const StaffManagementPage: React.FC = () => {
     if (!formData.name) newErrors.name = 'Name is required';
     if (!formData.employeeId) newErrors.employeeId = 'Employee ID is required';
     if (!formData.email) newErrors.email = 'Email is required';
-    else if (!formData.email.endsWith('@mitaoe.ac.in')) newErrors.email = 'Must be a college email';
+    else if (!formData.email.endsWith(APP_CONFIG.COLLEGE_EMAIL_DOMAIN)) newErrors.email = 'Must be a college email';
     if (!formData.minWeeklyHours) newErrors.minWeeklyHours = 'Min hours required';
     if (!formData.maxWeeklyHours) newErrors.maxWeeklyHours = 'Max hours required';
     
@@ -190,6 +194,8 @@ export const StaffManagementPage: React.FC = () => {
           specialization: formData.specialization,
           minWeeklyHours: parseInt(formData.minWeeklyHours),
           maxWeeklyHours: parseInt(formData.maxWeeklyHours),
+          departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
+          role: formData.role,
         });
         toast.success('Staff created successfully!');
       }
@@ -470,9 +476,12 @@ export const StaffManagementPage: React.FC = () => {
               <h3 className="font-medium text-gray-900 mb-2">CSV Format Instructions</h3>
               <ul className="text-sm text-gray-600 space-y-1">
                 <li>• First row should be headers: Name, Employee ID, Email, Phone, Specialization, Min Weekly Hours, Max Weekly Hours</li>
-                <li>• Email must be a valid college email (@mitaoe.ac.in)</li>
+                <li>• Email must be a valid college email ({APP_CONFIG.COLLEGE_EMAIL_DOMAIN})</li>
                 <li>• Employee ID must be unique</li>
-                <li>• Default password will be set to: mitaoe@123</li>
+                <li>• A temporary password will be assigned to each staff member</li>
+                {import.meta.env.DEV && (
+                  <li className="text-amber-600">• <strong>[DEV ONLY]</strong> Default test password: <code className="bg-amber-100 px-1 rounded">mitaoe@123</code></li>
+                )}
                 <li>• Staff will be required to change password on first login</li>
               </ul>
             </div>
@@ -522,7 +531,7 @@ export const StaffManagementPage: React.FC = () => {
               setErrors({ ...errors, email: '' });
             }}
             error={errors.email}
-            placeholder="name@mitaoe.ac.in"
+            placeholder={`name${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}`}
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -565,7 +574,19 @@ export const StaffManagementPage: React.FC = () => {
             />
           </div>
 
-          {isEditMode && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="input-field"
+              >
+                <option value="TEACHER">Teacher</option>
+                <option value="HOD">Head of Department (HOD)</option>
+                <option value="TIMETABLE_COORDINATOR">Timetable Coordinator</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
               <select
@@ -579,12 +600,15 @@ export const StaffManagementPage: React.FC = () => {
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
           {!isEditMode && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-              <p><strong>Note:</strong> Default password will be set to <code className="bg-blue-100 px-1 rounded">mitaoe@123</code></p>
-              <p>Staff will be required to change password on first login.</p>
+              <p><strong>Note:</strong> A temporary password will be assigned automatically.</p>
+              {import.meta.env.DEV && (
+                <p className="text-amber-600"><strong>[DEV ONLY]</strong> Test password: <code className="bg-amber-100 px-1 rounded">mitaoe@123</code></p>
+              )}
+              <p>Staff must change password on first login.</p>
             </div>
           )}
 

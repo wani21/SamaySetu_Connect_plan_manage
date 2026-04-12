@@ -20,25 +20,22 @@ interface AuthState {
 }
 
 // Create a dynamic storage based on rememberMe preference
-const createDynamicStorage = () => {
+const createDynamicStorage = (rememberMe: boolean = false) => {
   return {
     getItem: (name: string) => {
-      // Try localStorage first, then sessionStorage
+      // Check localStorage first for persistent auth, then sessionStorage
       const localItem = localStorage.getItem(name);
       if (localItem) return localItem;
       return sessionStorage.getItem(name);
     },
     setItem: (name: string, value: string) => {
-      // Get current rememberMe preference
-      const authData = JSON.parse(value);
-      const rememberMe = authData?.state?.rememberMe ?? true;
-      
+      // Use localStorage for remember me, sessionStorage otherwise
       if (rememberMe) {
         localStorage.setItem(name, value);
-        sessionStorage.removeItem(name); // Clean up session storage
+        sessionStorage.removeItem(name);
       } else {
         sessionStorage.setItem(name, value);
-        localStorage.removeItem(name); // Clean up local storage
+        localStorage.removeItem(name);
       }
     },
     removeItem: (name: string) => {
@@ -50,7 +47,7 @@ const createDynamicStorage = () => {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, _get) => ({
       user: null,
       isAuthenticated: false,
       rememberMe: false, // Default to false for better security
@@ -59,12 +56,21 @@ export const useAuthStore = create<AuthState>()(
         set({ _hasHydrated: state });
       },
       login: (user, rememberMe = false) => {
-        localStorage.setItem('jwt_token', user.token);
+        if (rememberMe) {
+          localStorage.setItem('jwt_token', user.token);
+          sessionStorage.removeItem('jwt_token');
+        } else {
+          sessionStorage.setItem('jwt_token', user.token);
+          localStorage.removeItem('jwt_token');
+        }
         set({ user, isAuthenticated: true, rememberMe });
       },
       logout: () => {
+        // Clear token from both storage locations
         localStorage.removeItem('jwt_token');
         sessionStorage.removeItem('jwt_token');
+        localStorage.removeItem('auth-storage');
+        sessionStorage.removeItem('auth-storage');
         set({ user: null, isAuthenticated: false, rememberMe: false });
       },
       setRememberMe: (remember) => {
@@ -75,9 +81,14 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       storage: createJSONStorage(() => createDynamicStorage()),
       onRehydrateStorage: () => (state) => {
-        // Restore authentication state on page load
+        // Restore authentication state and JWT token on page load
         if (state?.user?.token) {
-          localStorage.setItem('jwt_token', state.user.token);
+          // Token is already in state, it will be used by the request interceptor
+          if (state.rememberMe) {
+            localStorage.setItem('jwt_token', state.user.token);
+          } else {
+            sessionStorage.setItem('jwt_token', state.user.token);
+          }
         }
         // Mark as hydrated
         state?.setHasHydrated(true);

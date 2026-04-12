@@ -86,6 +86,7 @@ public class TeacherEntity implements UserDetails{
 	private Boolean isApproved = false;
 	
 	@NotBlank(message = "Password is required")
+	@com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
 	private String password;
 
 	@Column(name = "role")
@@ -94,18 +95,31 @@ public class TeacherEntity implements UserDetails{
 	@Column(name = "is_email_verified")
 	private Boolean isEmailVerified = false;
 	
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	@Column(name = "verification_token")
 	private String verificationToken;
-	
+
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	@Column(name = "verification_token_expiry")
 	private Timestamp verificationTokenExpiry;
-	
+
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	@Column(name = "password_reset_token")
 	private String passwordResetToken;
-	
+
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	@Column(name = "password_reset_token_expiry")
 	private Timestamp passwordResetTokenExpiry;
-	
+
+	// Account lockout — prevents brute force attacks
+	@com.fasterxml.jackson.annotation.JsonIgnore
+	@Column(name = "failed_login_attempts")
+	private Integer failedLoginAttempts = 0;
+
+	@com.fasterxml.jackson.annotation.JsonIgnore
+	@Column(name = "account_locked_until")
+	private Timestamp accountLockedUntil;
+
 	@CreationTimestamp
 	@Column(name = "created_at", updatable = false)
 	private Timestamp createdAt;
@@ -122,8 +136,9 @@ public class TeacherEntity implements UserDetails{
 	private Timestamp updatedAt;
 	
 	// Relationships
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "department_id")
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"teachers", "courses", "rooms", "divisions"})
 	private DepartmentEntity department;
 	
 	@ManyToMany

@@ -37,8 +37,9 @@ public class Batch {
     @Column(nullable = false)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "division_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"timetableEntries", "students", "department", "academicYear"})
     private Division division;
 
     @CreationTimestamp

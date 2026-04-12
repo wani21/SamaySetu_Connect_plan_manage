@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { authAPI } from '../services/api';
+import { APP_CONFIG } from '../constants';
 import logo from '../assets/logo.png';
 import bannerVideo from '../assets/banner_video1.mp4';
 
@@ -39,8 +40,8 @@ export const RegisterPage: React.FC = () => {
     if (!formData.employeeId) newErrors.employeeId = 'Employee ID is required';
     if (!formData.email) {
       newErrors.email = 'Email is required';
-    } else if (!formData.email.endsWith('@mitaoe.ac.in')) {
-      newErrors.email = 'Only college email (@mitaoe.ac.in) is allowed';
+    } else if (!formData.email.endsWith(APP_CONFIG.COLLEGE_EMAIL_DOMAIN)) {
+      newErrors.email = `Only college email (${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}) is allowed`;
     }
     if (!formData.phone) newErrors.phone = 'Phone number is required';
     if (!formData.password) {
@@ -179,7 +180,7 @@ export const RegisterPage: React.FC = () => {
               onChange={handleChange}
               error={errors.email}
               icon={<FiMail />}
-              placeholder="your.name@mitaoe.ac.in"
+              placeholder={`your.name${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}`}
               autoComplete="email"
             />
 
