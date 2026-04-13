@@ -54,8 +54,11 @@ public class DepartmentEntity {
 	private String years = "1,2,3,4";
 	
 	// Link to academic year - departments are now academic year specific
-	@ManyToOne(fetch = FetchType.LAZY)
+	// EAGER because academicYear is always needed when department is serialized,
+	// and with open-in-view=false the Hibernate session closes before Redis serialization.
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "academic_year_id")
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"divisions", "timetableEntries", "departments"})
 	private AcademicYear academicYear;
 	
 	@CreationTimestamp

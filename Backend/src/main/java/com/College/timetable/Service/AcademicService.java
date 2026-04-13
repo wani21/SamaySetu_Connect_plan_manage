@@ -3,66 +3,74 @@ package com.College.timetable.Service;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.College.timetable.Entity.AcademicYear;
-import com.College.timetable.Repository.Acadamic_repo;
+import com.College.timetable.Repository.AcademicYearRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 
 @Service
-public class AcadamicService {
-	
-	@Autowired
-	private Acadamic_repo acadamy;
+public class AcademicService {
 
-	@org.springframework.cache.annotation.CacheEvict(value = "academic-years", allEntries = true)
-	public AcademicYear addAcadamic(AcademicYear aca) {
+	@Autowired
+	private AcademicYearRepository academicYearRepo;
+
+	@Transactional
+	@CacheEvict(value = "academic-years", allEntries = true)
+	public AcademicYear addAcademic(AcademicYear aca) {
 		// If this academic year is being set as current, unset any existing current year
 		if (aca.getIsCurrent() != null && aca.getIsCurrent()) {
-			AcademicYear existingCurrent = acadamy.findByIsCurrent(true);
+			AcademicYear existingCurrent = academicYearRepo.findByIsCurrent(true);
 			if (existingCurrent != null) {
 				throw new IllegalArgumentException("An academic year '" + existingCurrent.getYearName() + "' is already set as current. Please unset it first before setting a new current year.");
 			}
 		}
-		return acadamy.save(aca);
+		return academicYearRepo.save(aca);
 	}
-	
-	@org.springframework.cache.annotation.Cacheable("academic-years")
+
+	@Transactional(readOnly = true)
+	@Cacheable("academic-years")
 	public List<AcademicYear> getAll() {
-		return acadamy.findAll();
+		return academicYearRepo.findAll();
 	}
-	
-	@org.springframework.cache.annotation.Cacheable(value = "academic-years", key = "#id")
+
+	@Transactional(readOnly = true)
+	@Cacheable(value = "academic-years", key = "#id")
 	public AcademicYear getById(Long id) {
-		return acadamy.findById(id)
+		return academicYearRepo.findById(id)
 			.orElseThrow(() -> new EntityNotFoundException("Academic year not found with id: " + id));
 	}
-	
-	@org.springframework.cache.annotation.CacheEvict(value = "academic-years", allEntries = true)
+
+	@Transactional
+	@CacheEvict(value = "academic-years", allEntries = true)
 	public AcademicYear update(Long id, AcademicYear aca) {
 		AcademicYear existing = getById(id);
-		
+
 		// If trying to set this as current, check if another year is already current
 		if (aca.getIsCurrent() != null && aca.getIsCurrent() && !existing.getIsCurrent()) {
-			AcademicYear existingCurrent = acadamy.findByIsCurrent(true);
+			AcademicYear existingCurrent = academicYearRepo.findByIsCurrent(true);
 			if (existingCurrent != null && !existingCurrent.getId().equals(id)) {
 				throw new IllegalArgumentException("Academic year '" + existingCurrent.getYearName() + "' is already set as current. Please unset it first before setting '" + aca.getYearName() + "' as current.");
 			}
 		}
-		
+
 		existing.setYearName(aca.getYearName());
 		existing.setStartDate(aca.getStartDate());
 		existing.setEndDate(aca.getEndDate());
 		existing.setIsCurrent(aca.getIsCurrent());
-		return acadamy.save(existing);
+		return academicYearRepo.save(existing);
 	}
-	
-	@org.springframework.cache.annotation.CacheEvict(value = "academic-years", allEntries = true)
+
+	@Transactional
+	@CacheEvict(value = "academic-years", allEntries = true)
 	public void delete(Long id) {
-		if (!acadamy.existsById(id)) {
+		if (!academicYearRepo.existsById(id)) {
 			throw new EntityNotFoundException("Academic year not found with id: " + id);
 		}
-		acadamy.deleteById(id);
+		academicYearRepo.deleteById(id);
 	}
 }

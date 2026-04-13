@@ -7,5 +7,8 @@ import com.College.timetable.Entity.Division;
 
 @Repository
 public interface Division_repo extends JpaRepository<Division, Long> {
-	
+
+	java.util.List<Division> findByAcademicYearId(Long academicYearId);
+
+	java.util.List<Division> findByDepartmentId(Long departmentId);
 }

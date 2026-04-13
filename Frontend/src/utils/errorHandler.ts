@@ -2,12 +2,14 @@
  * Extract user-friendly error message from API error response
  */
 export const getErrorMessage = (error: any): string => {
-  // Log the full error for debugging
-  console.log('Error details:', {
-    status: error.response?.status,
-    data: error.response?.data,
-    message: error.message,
-  });
+  // Log the full error for debugging (dev only)
+  if (import.meta.env.DEV) {
+    console.error('Error details:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+  }
 
   if (!error.response) {
     return error.message || 'Network error. Please check your connection.';

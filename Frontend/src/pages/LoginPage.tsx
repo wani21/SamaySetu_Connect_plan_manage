@@ -7,6 +7,7 @@ import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { authAPI, teacherAPI } from '../services/api';
 import { useAuthStore } from '../store/authStore';
+import { APP_CONFIG } from '../constants';
 import logo from '../assets/logo.png';
 import bannerVideo from '../assets/banner_video1.mp4';
 
@@ -50,8 +51,8 @@ export const LoginPage: React.FC = () => {
     }
 
     // Validate college email
-    if (!formData.email.endsWith('@mitaoe.ac.in')) {
-      toast.error('Please use your college email (@mitaoe.ac.in)', { duration: 5000 });
+    if (!formData.email.endsWith(APP_CONFIG.COLLEGE_EMAIL_DOMAIN)) {
+      toast.error(`Please use your college email (${APP_CONFIG.COLLEGE_EMAIL_DOMAIN})`, { duration: 5000 });
       setErrors({ email: 'Only college email addresses are allowed' });
       return;
     }
@@ -85,8 +86,9 @@ export const LoginPage: React.FC = () => {
       
       toast.success('Login successful!');
       
-      // Navigate based on role
-      if (role === 'ADMIN') {
+      // Navigate based on role — ADMIN, HOD, TIMETABLE_COORDINATOR go to admin layout
+      const adminRoles = ['ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
+      if (adminRoles.includes(role)) {
         navigate('/admin/dashboard');
       } else {
         navigate('/dashboard');
@@ -228,7 +230,7 @@ export const LoginPage: React.FC = () => {
               onChange={handleChange}
               error={errors.email}
               icon={<FiMail />}
-              placeholder="your.email@mitaoe.ac.in"
+              placeholder={`your.email${APP_CONFIG.COLLEGE_EMAIL_DOMAIN}`}
               autoComplete="email"
             />
 

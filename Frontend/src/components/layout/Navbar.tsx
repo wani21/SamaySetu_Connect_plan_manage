@@ -111,7 +111,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                     <button
                       onClick={() => {
                         setShowDropdown(false);
-                        navigate(user?.role === 'ADMIN' ? '/admin/profile' : '/dashboard/profile');
+                        const adminRoles = ['ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
+                        navigate(adminRoles.includes(user?.role || '') ? '/admin/profile' : '/dashboard/profile');
                       }}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3"
                     >

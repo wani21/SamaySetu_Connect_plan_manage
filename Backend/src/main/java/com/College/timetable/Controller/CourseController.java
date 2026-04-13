@@ -19,7 +19,7 @@ import com.College.timetable.Service.CourseService;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("admin/api/courses")
+@RequestMapping("/admin/api/courses")
 public class CourseController {
 	
 	@Autowired

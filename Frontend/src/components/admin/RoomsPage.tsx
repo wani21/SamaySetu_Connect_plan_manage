@@ -108,7 +108,7 @@ export const RoomsPage: React.FC = () => {
       buildingWing: room.buildingWing || '',
       capacity: room.capacity.toString(),
       roomType: room.roomType.toLowerCase(),
-      departmentId: room.department.id.toString(),
+      departmentId: room.department?.id?.toString() || '',
       hasProjector: room.hasProjector || false,
       hasAc: room.hasAc || false,
       equipment: room.equipment || '',
@@ -239,7 +239,7 @@ export const RoomsPage: React.FC = () => {
       room.capacity.toString().includes(searchQuery);
     
     const matchesDepartment = filterDepartment === '' || 
-      room.department.id.toString() === filterDepartment;
+      room.department?.id?.toString() === filterDepartment;
     
     const matchesWing = filterWing === '' || 
       room.buildingWing === filterWing;
@@ -399,7 +399,7 @@ export const RoomsPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Department:</span>
-                <span className="font-medium text-xs">{room.department.name}</span>
+                <span className="font-medium text-xs">{room.department?.name || 'Shared'}</span>
               </div>
               <div className="flex gap-2 mt-3">
                 {room.hasProjector && (

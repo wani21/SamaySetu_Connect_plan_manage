@@ -19,7 +19,7 @@ import com.College.timetable.Service.DivisionService;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("admin/api/divisions")
+@RequestMapping("/admin/api/divisions")
 public class DivisionController {
 	
 	@Autowired
@@ -39,6 +39,11 @@ public class DivisionController {
 	@GetMapping("/{id}")
 	public ResponseEntity<Division> getDivisionById(@PathVariable Long id) {
 		return ResponseEntity.ok(divisionService.getById(id));
+	}
+
+	@GetMapping("/academic-year/{academicYearId}")
+	public ResponseEntity<List<Division>> getDivisionsByAcademicYear(@PathVariable Long academicYearId) {
+		return ResponseEntity.ok(divisionService.getByAcademicYear(academicYearId));
 	}
 	
 	@PutMapping("/{id}")

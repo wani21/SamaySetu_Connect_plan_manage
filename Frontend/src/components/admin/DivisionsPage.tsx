@@ -40,12 +40,8 @@ export const DivisionsPage: React.FC = () => {
   const fetchDivisions = async () => {
     try {
       const response = await divisionAPI.getAll();
-      console.log('Divisions API Response:', response);
-      console.log('Divisions Data:', response.data);
-      console.log('Is Array?', Array.isArray(response.data));
       setDivisions(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error('Failed to fetch divisions:', error);
       toast.error('Failed to fetch divisions');
       setDivisions([]); // Set empty array on error
     }
@@ -158,7 +154,6 @@ export const DivisionsPage: React.FC = () => {
     } catch (error: any) {
       const errorMessage = getErrorMessage(error);
       toast.error(errorMessage, { duration: 5000 });
-      console.error('Division operation error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -176,7 +171,6 @@ export const DivisionsPage: React.FC = () => {
     } catch (error: any) {
       const errorMessage = getErrorMessage(error);
       toast.error(errorMessage, { duration: 5000 });
-      console.error('Division deletion error:', error);
     }
   };
 

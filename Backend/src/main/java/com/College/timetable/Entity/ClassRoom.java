@@ -84,8 +84,9 @@ public class ClassRoom {
 	private Timestamp updatedAt;
 	
 	// Relationships
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "department_id")
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"teachers", "courses", "rooms", "divisions"})
 	private DepartmentEntity department;
 	
 	@OneToMany(mappedBy = "room", cascade = CascadeType.ALL)

@@ -14,6 +14,12 @@ import com.College.timetable.Entity.TeacherAvailability;
 @Repository
 public interface TeacherAvailability_repo extends JpaRepository<TeacherAvailability, Long> {
 	
+	// Find all availability entries for a teacher
+	List<TeacherAvailability> findByTeacherId(Long teacherId);
+
+	// Delete all availability entries for a teacher
+	void deleteByTeacherId(Long teacherId);
+
 	// Find availability by teacher and day
 	List<TeacherAvailability> findByTeacherIdAndDayOfWeek(Long teacherId, DayOfWeek dayOfWeek);
 	

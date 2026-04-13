@@ -64,5 +64,6 @@ public class TimeSlot {
 
 	// Relationships
 	@OneToMany(mappedBy = "timeSlot", cascade = CascadeType.ALL)
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	private List<TimetableEntry> timetableEntries;
 }

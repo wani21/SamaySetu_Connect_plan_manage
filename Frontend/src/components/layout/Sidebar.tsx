@@ -11,6 +11,7 @@ import {
   FiLayers
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuthStore } from '../../store/authStore';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -19,6 +20,9 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = false }) => {
+  const user = useAuthStore((state) => state.user);
+  const role = user?.role || 'TEACHER';
+
   const teacherLinks = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
     { to: '/dashboard/timetable', icon: FiCalendar, label: 'My Timetable' },
@@ -26,15 +30,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     { to: '/dashboard/profile', icon: FiSettings, label: 'Profile' },
   ];
 
-  const adminLinks = [
-    { to: '/admin/dashboard', icon: FiHome, label: 'Dashboard' },
-    { to: '/admin/academic-structure', icon: FiLayers, label: 'Academic Structure' },
-    { to: '/admin/staff', icon: FiUsers, label: 'Staff' },
-    { to: '/admin/rooms', icon: FiGrid, label: 'Rooms' },
-    { to: '/admin/time-slots', icon: FiClock, label: 'Time Slots' },
-  ];
+  // Build admin-layout links based on role
+  const getAdminLinks = () => {
+    const links = [
+      { to: '/admin/dashboard', icon: FiHome, label: 'Dashboard' },
+    ];
 
-  const links = isAdmin ? adminLinks : teacherLinks;
+    // Academic Structure — all admin-layout roles
+    links.push({ to: '/admin/academic-structure', icon: FiLayers, label: 'Academic Structure' });
+
+    // Staff management — ADMIN and HOD only
+    if (role === 'ADMIN' || role === 'HOD') {
+      links.push({ to: '/admin/staff', icon: FiUsers, label: 'Staff' });
+    }
+
+    // Rooms — all admin-layout roles
+    links.push({ to: '/admin/rooms', icon: FiGrid, label: 'Rooms' });
+
+    // Time Slots — ADMIN and TIMETABLE_COORDINATOR
+    if (role === 'ADMIN' || role === 'TIMETABLE_COORDINATOR') {
+      links.push({ to: '/admin/time-slots', icon: FiClock, label: 'Time Slots' });
+    }
+
+    // Timetable — all admin-layout roles
+    links.push({ to: '/admin/timetable', icon: FiCalendar, label: 'Timetable' });
+
+    return links;
+  };
+
+  const links = isAdmin ? getAdminLinks() : teacherLinks;
 
   return (
     <>

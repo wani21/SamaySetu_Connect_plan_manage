@@ -33,10 +33,10 @@ export const ChangeFirstPasswordPage: React.FC = () => {
 
     if (!formData.newPassword) {
       newErrors.newPassword = 'Password is required';
-    } else if (formData.newPassword.length < 6) {
-      newErrors.newPassword = 'Password must be at least 6 characters';
-    } else if (formData.newPassword === 'mitaoe@123') {
-      newErrors.newPassword = 'Please choose a different password than the default';
+    } else if (formData.newPassword.length < 8) {
+      newErrors.newPassword = 'Password must be at least 8 characters';
+    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/.test(formData.newPassword)) {
+      newErrors.newPassword = 'Password must contain uppercase, lowercase, number, and special character (@$!%*?&#)';
     }
 
     if (!formData.confirmPassword) {
@@ -71,7 +71,6 @@ export const ChangeFirstPasswordPage: React.FC = () => {
       toast.success('Password changed successfully! Please login with your new password.');
       setTimeout(() => navigate('/login'), 2000);
     } catch (error: any) {
-      console.error('Change password error:', error);
       let message = 'Failed to change password. Please try again.';
 
       if (error.response) {
@@ -169,7 +168,7 @@ export const ChangeFirstPasswordPage: React.FC = () => {
                     onChange={handleChange}
                     error={errors.newPassword}
                     icon={<FiLock />}
-                    placeholder="Min. 6 characters (not mitaoe@123)"
+                    placeholder="Min. 8 chars, uppercase, lowercase, number, special"
                     autoComplete="new-password"
                   />
                   <button

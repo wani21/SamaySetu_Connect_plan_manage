@@ -4,7 +4,10 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -33,19 +36,29 @@ import com.College.timetable.Service.CourseService;
 
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.annotation.Value;
+
 @RestController
 @RequestMapping("/admin")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
+
     @Autowired
     private AdminService adminService;
-    
+
     @Autowired
     private CourseService courseService;
-    
+
     @Autowired
     private Dep_repo departmentRepository;
+
+    // Configurable per environment:
+    // Dev → "mitaoe@123" (known password for testing)
+    // Prod → "random" (generates unique UUID per staff)
+    @Value("${app.staff.default-password:random}")
+    private String staffDefaultPassword;
     
     @PostMapping("/upload-staff")
     public ResponseEntity<String> uploadStaffCSV(@RequestParam("file") MultipartFile file) {
@@ -53,16 +66,28 @@ public class AdminController {
             if (file.isEmpty()) {
                 return ResponseEntity.badRequest().body("Please select a CSV file to upload");
             }
-            
+
             if (!file.getOriginalFilename().toLowerCase().endsWith(".csv")) {
                 return ResponseEntity.badRequest().body("Please upload a CSV file");
             }
-            
+
+            // Validate file size (max 5MB)
+            long maxFileSize = 5 * 1024 * 1024; // 5MB
+            if (file.getSize() > maxFileSize) {
+                return ResponseEntity.badRequest().body("File too large. Maximum file size is 5MB");
+            }
+
+            // Validate content type
+            String contentType = file.getContentType();
+            if (contentType != null && !contentType.equals("text/csv") && !contentType.equals("application/csv")) {
+                return ResponseEntity.badRequest().body("Invalid file format. Please upload a CSV file");
+            }
+
             List<TeacherEntity> staffList = parseCSV(file);
             int created = adminService.createStaffFromCSV(staffList);
-            
+
             return ResponseEntity.ok("Successfully created " + created + " staff members");
-            
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error processing CSV: " + e.getMessage());
         }
@@ -79,15 +104,31 @@ public class AdminController {
             teacher.setSpecialization(request.getSpecialization());
             teacher.setMinWeeklyHours(request.getMinWeeklyHours());
             teacher.setMaxWeeklyHours(request.getMaxWeeklyHours());
-            
-            // Set defaults for admin-created staff
-            teacher.setPassword("mitaoe@123");
-            teacher.setRole("TEACHER");
+
+            // Password from config: known value in dev for testing, random UUID in prod
+            String tempPassword = "random".equalsIgnoreCase(staffDefaultPassword)
+                    ? UUID.randomUUID().toString().substring(0, 10)
+                    : staffDefaultPassword;
+            teacher.setPassword(tempPassword);
+
+            // Role from request — default to TEACHER if not specified
+            String role = request.getRole() != null ? request.getRole().toUpperCase() : "TEACHER";
+            if (!List.of("TEACHER", "HOD", "TIMETABLE_COORDINATOR").contains(role)) {
+                return ResponseEntity.badRequest().body("Invalid role. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR");
+            }
+            teacher.setRole(role);
             teacher.setIsActive(true);
             teacher.setIsApproved(true);
             teacher.setIsEmailVerified(true);
             teacher.setIsFirstLogin(true);
-            
+
+            // Optional department assignment
+            if (request.getDepartmentId() != null) {
+                DepartmentEntity dept = departmentRepository.findById(request.getDepartmentId())
+                        .orElseThrow(() -> new RuntimeException("Department not found with ID: " + request.getDepartmentId()));
+                teacher.setDepartment(dept);
+            }
+
             List<TeacherEntity> staffList = new ArrayList<>();
             staffList.add(teacher);
             
@@ -105,11 +146,11 @@ public class AdminController {
     
     @GetMapping("/download-staff-template")
     public ResponseEntity<String> downloadStaffTemplate() {
-        String csvContent = "Name,Employee ID,Email,Phone,Specialization,Min Weekly Hours,Max Weekly Hours\n" +
-                           "John Doe,EMP001,john.doe@mitaoe.ac.in,9876543210,Computer Science,12,25\n" +
-                           "Jane Smith,EMP002,jane.smith@mitaoe.ac.in,9876543211,Mathematics,10,20\n" +
-                           "Robert Johnson,EMP003,robert.johnson@mitaoe.ac.in,9876543212,Physics,15,30\n" +
-                           "Emily Davis,EMP004,emily.davis@mitaoe.ac.in,9876543213,Chemistry,10,25";
+        String csvContent = "Name,Employee ID,Email,Phone,Specialization,Min Weekly Hours,Max Weekly Hours,Role\n" +
+                           "John Doe,EMP001,john.doe@mitaoe.ac.in,9876543210,Computer Science,12,25,TEACHER\n" +
+                           "Jane Smith,EMP002,jane.smith@mitaoe.ac.in,9876543211,Mathematics,10,20,HOD\n" +
+                           "Robert Johnson,EMP003,robert.johnson@mitaoe.ac.in,9876543212,Physics,15,30,TEACHER\n" +
+                           "Emily Davis,EMP004,emily.davis@mitaoe.ac.in,9876543213,Chemistry,10,25,TIMETABLE_COORDINATOR";
         
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("text/csv"));
@@ -139,14 +180,26 @@ public class AdminController {
             if (file.isEmpty()) {
                 return ResponseEntity.badRequest().body("Please select a CSV file to upload");
             }
-            
+
             if (!file.getOriginalFilename().toLowerCase().endsWith(".csv")) {
                 return ResponseEntity.badRequest().body("Please upload a CSV file");
             }
-            
+
+            // Validate file size (max 5MB)
+            long maxFileSize = 5 * 1024 * 1024; // 5MB
+            if (file.getSize() > maxFileSize) {
+                return ResponseEntity.badRequest().body("File too large. Maximum file size is 5MB");
+            }
+
+            // Validate content type
+            String contentType = file.getContentType();
+            if (contentType != null && !contentType.equals("text/csv") && !contentType.equals("application/csv")) {
+                return ResponseEntity.badRequest().body("Invalid file format. Please upload a CSV file");
+            }
+
             DepartmentEntity department = departmentRepository.findById(departmentId)
                 .orElseThrow(() -> new RuntimeException("Department not found"));
-            
+
             List<CourseEntity> courseList = parseCoursesCSV(file, department, year);
             int created = 0;
             
@@ -155,7 +208,7 @@ public class AdminController {
                     courseService.add(course);
                     created++;
                 } catch (Exception e) {
-                    System.err.println("Error creating course " + course.getCode() + ": " + e.getMessage());
+                            logger.warn("Error creating course {}: {}", course.getCode(), e.getMessage());
                 }
             }
             
@@ -253,44 +306,96 @@ public class AdminController {
     
     private List<TeacherEntity> parseCSV(MultipartFile file) throws Exception {
         List<TeacherEntity> staffList = new ArrayList<>();
-        
+
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             String line;
             boolean isFirstLine = true;
-            
+            int lineNumber = 0;
+
             while ((line = reader.readLine()) != null) {
+                lineNumber++;
                 // Skip header row
                 if (isFirstLine) {
                     isFirstLine = false;
                     continue;
                 }
-                
-                String[] fields = line.split(",");
+
+                // Skip empty lines
+                if (line.trim().isEmpty()) continue;
+
+                // Quote-aware CSV parsing: handles "field with, comma" correctly
+                String[] fields = parseCSVLine(line);
                 if (fields.length < 7) {
-                    throw new RuntimeException("Invalid CSV format. Expected at least 7 columns");
+                    throw new RuntimeException("Row " + lineNumber + ": Expected at least 7 columns, found " + fields.length);
                 }
-                
+
                 TeacherEntity teacher = new TeacherEntity();
                 teacher.setName(fields[0].trim());
                 teacher.setEmployeeId(fields[1].trim());
                 teacher.setEmail(fields[2].trim());
                 teacher.setPhone(fields[3].trim());
                 teacher.setSpecialization(fields[4].trim());
-                teacher.setMinWeeklyHours(Integer.parseInt(fields[5].trim()));
-                teacher.setMaxWeeklyHours(Integer.parseInt(fields[6].trim()));
-                
-                // Set defaults
-                teacher.setPassword("mitaoe@123"); // Will be encoded by service
-                teacher.setRole("TEACHER");
+
+                try {
+                    teacher.setMinWeeklyHours(Integer.parseInt(fields[5].trim()));
+                    teacher.setMaxWeeklyHours(Integer.parseInt(fields[6].trim()));
+                } catch (NumberFormatException e) {
+                    throw new RuntimeException("Row " + lineNumber + ": Weekly hours must be numeric");
+                }
+
+                // Role from column 8 (optional — defaults to TEACHER)
+                String role = "TEACHER";
+                if (fields.length >= 8 && !fields[7].trim().isEmpty()) {
+                    role = fields[7].trim().toUpperCase();
+                    if (!List.of("TEACHER", "HOD", "TIMETABLE_COORDINATOR").contains(role)) {
+                        throw new RuntimeException("Row " + lineNumber + ": Invalid role '" + fields[7].trim() + "'. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR");
+                    }
+                }
+
+                // Password from config: known value in dev for testing, random UUID in prod
+                String password = "random".equalsIgnoreCase(staffDefaultPassword)
+                        ? UUID.randomUUID().toString().replace("-", "").substring(0, 12)
+                        : staffDefaultPassword;
+                teacher.setPassword(password);
+                teacher.setRole(role);
                 teacher.setIsActive(true);
                 teacher.setIsApproved(true);
                 teacher.setIsEmailVerified(true);
                 teacher.setIsFirstLogin(true);
-                
+
                 staffList.add(teacher);
             }
         }
-        
+
         return staffList;
+    }
+
+    /**
+     * Parse a single CSV line handling quoted fields.
+     * Fields wrapped in double quotes can contain commas and newlines.
+     */
+    private String[] parseCSVLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"'); // escaped quote
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c == ',' && !inQuotes) {
+                fields.add(current.toString());
+                current = new StringBuilder();
+            } else {
+                current.append(c);
+            }
+        }
+        fields.add(current.toString());
+        return fields.toArray(new String[0]);
     }
 }

@@ -26,7 +26,16 @@ public interface TimeSlot_repo extends JpaRepository<TimeSlot, Long> {
     
     @Query("SELECT t FROM TimeSlot t WHERE t.type = :type AND " +
            "((t.startTime < :endTime AND t.endTime > :startTime))")
-    List<TimeSlot> findOverlappingSlotsForNew(@Param("type") String type, 
-                                              @Param("startTime") LocalTime startTime, 
+    List<TimeSlot> findOverlappingSlotsForNew(@Param("type") String type,
+                                              @Param("startTime") LocalTime startTime,
                                               @Param("endTime") LocalTime endTime);
+
+    /**
+     * Find the immediate next slot (break or lecture) after a given time.
+     * Used to check whether a lab can span 2 truly consecutive periods
+     * with no break in between.
+     */
+    java.util.Optional<TimeSlot> findFirstByTypeAndIsActiveTrueAndStartTimeGreaterThanEqualOrderByStartTimeAsc(
+        String type, LocalTime startTime
+    );
 }

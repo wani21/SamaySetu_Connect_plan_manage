@@ -66,11 +66,14 @@ public class JWTUtil {
 
     // Create token with claims and subject
     private String createToken(Map<String, Object> claims, String subject) {
+        // Token expiration is set to 1 hour for security reasons.
+        // Shorter token lifetimes reduce the impact of token compromise.
+        // Users should refresh their authentication within this window.
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hours
+                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 1)) // 1 hour
                 .signWith(getSigningKey())
                 .compact();
     }

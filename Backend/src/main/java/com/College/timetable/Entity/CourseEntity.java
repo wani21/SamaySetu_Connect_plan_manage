@@ -92,8 +92,9 @@ public class CourseEntity {
 	private Timestamp updatedAt;
 	
 	// Relationships
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "department_id", nullable = false)
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"teachers", "courses", "rooms", "divisions"})
 	private DepartmentEntity department;
 	
 	@ManyToMany(mappedBy = "courses")

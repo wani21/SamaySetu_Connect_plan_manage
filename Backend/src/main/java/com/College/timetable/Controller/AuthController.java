@@ -2,7 +2,10 @@ package com.College.timetable.Controller;
 
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,21 +35,23 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
-	
+
+	private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
+
 	@Autowired
 	private PasswordEncoder passwordEncode;
 
 	@Autowired
 	private AuthenticationManager authManager;
-	
+
 	@Autowired
 	private JWTUtil jwtutil;
-	
-	
-	
-	
+
 	@Autowired
 	private TeacherService teacherservice;
+
+	@Value("${app.frontend.url:http://localhost:5173}")
+	private String frontendUrl;
 	
 	//handler method
 	@PostMapping("/")
@@ -76,12 +81,16 @@ public class AuthController {
 	
 	@PostMapping("/forgot-password")
 	public ResponseEntity<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+		// Always return the same message to prevent email enumeration attacks.
+		// An attacker cannot determine whether an email exists in the system.
 		try {
 			teacherservice.forgotPassword(request.getEmail());
-			return ResponseEntity.ok("Password reset link has been sent to your email.");
+			logger.info("[AUTH] Password reset requested for email: {}", request.getEmail());
 		} catch (Exception e) {
-			return ResponseEntity.badRequest().body(e.getMessage());
+			// Log the failure server-side but do NOT expose it to the client
+			logger.warn("[AUTH] Password reset failed for email: {} - {}", request.getEmail(), e.getMessage());
 		}
+		return ResponseEntity.ok("If this email is registered, you will receive a password reset link.");
 	}
 	
 	@PostMapping("/reset-password")
@@ -97,48 +106,59 @@ public class AuthController {
 	@GetMapping("/reset-password")
 	public ResponseEntity<String> resetPasswordRedirect(@RequestParam("token") String token) {
 		try {
-			// Validate token exists and is not expired
 			teacherservice.validateResetToken(token);
-			// Redirect to frontend with token
+			String encodedToken = java.net.URLEncoder.encode(token, java.nio.charset.StandardCharsets.UTF_8);
 			return ResponseEntity.status(HttpStatus.FOUND)
-					.header("Location", "http://localhost:5173/reset-password?token=" + token)
+					.header("Location", frontendUrl + "/reset-password?token=" + encodedToken)
 					.body("Redirecting to password reset page...");
 		} catch (Exception e) {
-			// Redirect to frontend with error
+			String encodedError = java.net.URLEncoder.encode(e.getMessage(), java.nio.charset.StandardCharsets.UTF_8);
 			return ResponseEntity.status(HttpStatus.FOUND)
-					.header("Location", "http://localhost:5173/reset-password?error=" + e.getMessage())
+					.header("Location", frontendUrl + "/reset-password?error=" + encodedError)
 					.body("Redirecting to password reset page...");
 		}
 	}
 	
 	@PostMapping("/login")
-	public AuthResponse login(@RequestBody AuthRequest request) {
+	public AuthResponse login(@Valid @RequestBody AuthRequest request) {
+		logger.debug("[LOGIN] Login attempt for: {}", request.getEmail());
 		try {
-			// First check user status (email verification, approval, etc.)
+			// Step 0: Check if account is locked
+			teacherservice.checkAccountLocked(request.getEmail());
+
+			// Step 1: Check user status (email verification, approval, etc.)
 			final UserDetails user = teacherservice.loadUserByUsername(request.getEmail());
-			
-			// Then authenticate credentials
-			authenticate(request.getEmail(), request.getPassword());
-			
-			// Check if first login (only for non-admin users)
-			String role = teacherservice.getByRole(request.getEmail());
-			boolean isFirstLogin = false;
-			
-			// Only check first login for TEACHER role, not ADMIN
-			if ("TEACHER".equals(role)) {
-				isFirstLogin = teacherservice.isFirstLogin(request.getEmail());
+
+			// Step 2: Authenticate credentials (BCrypt check)
+			try {
+				authenticate(request.getEmail(), request.getPassword());
+			} catch (Exception authEx) {
+				// Password wrong — record failure and possibly lock
+				teacherservice.recordFailedLogin(request.getEmail());
+				throw authEx;
 			}
-			
-			// Generate token and return response
+
+			// Step 3: Password correct — reset any failed attempts
+			teacherservice.resetFailedLogins(request.getEmail());
+
+			// Step 4: Get role and check first login
+			String role = teacherservice.getByRole(request.getEmail());
+			boolean isFirstLogin = !"ADMIN".equals(role) && teacherservice.isFirstLogin(request.getEmail());
+
+			// Step 5: Generate JWT
 			final String token = jwtutil.generateToken(user);
-			
+
 			AuthResponse response = new AuthResponse(request.getEmail(), token, role);
 			response.setFirstLogin(isFirstLogin);
-			
+
+			logger.debug("[LOGIN] Success: {} (role={})", request.getEmail(), role);
 			return response;
 		} catch (RuntimeException e) {
-			// Preserve specific error messages from TeacherService
+			logger.warn("[LOGIN] Failed for {}: {}", request.getEmail(), e.getMessage());
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+		} catch (Exception e) {
+			logger.error("[LOGIN] Unexpected error for {}", request.getEmail(), e);
+			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred. Please try again later.");
 		}
 	}
 	
@@ -154,9 +174,15 @@ public class AuthController {
 	
 	private void authenticate(String email, String password) {
 		try {
+			logger.debug("[LOGIN] authenticate() calling AuthenticationManager");
 			authManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
+			logger.debug("[LOGIN] authenticate() credentials accepted");
 		} catch (Exception e) {
-			throw new RuntimeException("Email or password is incorrect");
+			// Log full cause for debugging
+			logger.warn("[LOGIN] authenticate() FAILED for {} - Cause: {} - Msg: {}",
+					email, e.getClass().getSimpleName(), e.getMessage());
+			// Use generic message to prevent email enumeration attacks
+			throw new RuntimeException("Invalid email or password");
 		}
 	}
 
