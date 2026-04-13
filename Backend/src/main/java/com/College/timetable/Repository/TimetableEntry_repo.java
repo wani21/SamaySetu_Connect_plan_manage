@@ -164,7 +164,7 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
             AND t.dayOfWeek = :day
             AND t.status != 'ARCHIVED'
             """)
-        long countTeacherHoursOnDay(
+        long countTeacherPeriodsOnDay(
             @Param("teacherId") Long teacherId,
             @Param("academicYearId") Long academicYearId,
             @Param("day") DayOfWeek day

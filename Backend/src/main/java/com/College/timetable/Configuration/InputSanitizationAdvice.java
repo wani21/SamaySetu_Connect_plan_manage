@@ -26,7 +26,11 @@ import java.util.Iterator;
 @RestControllerAdvice
 public class InputSanitizationAdvice extends RequestBodyAdviceAdapter {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public InputSanitizationAdvice(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public boolean supports(MethodParameter methodParameter, Type targetType,

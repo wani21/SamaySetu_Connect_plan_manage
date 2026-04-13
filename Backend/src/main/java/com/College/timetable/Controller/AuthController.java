@@ -121,7 +121,7 @@ public class AuthController {
 	
 	@PostMapping("/login")
 	public AuthResponse login(@Valid @RequestBody AuthRequest request) {
-		logger.info("[LOGIN] Login attempt for: {}", request.getEmail());
+		logger.debug("[LOGIN] Login attempt for: {}", request.getEmail());
 		try {
 			// Step 0: Check if account is locked
 			teacherservice.checkAccountLocked(request.getEmail());
@@ -151,7 +151,7 @@ public class AuthController {
 			AuthResponse response = new AuthResponse(request.getEmail(), token, role);
 			response.setFirstLogin(isFirstLogin);
 
-			logger.info("[LOGIN] Success: {} (role={})", request.getEmail(), role);
+			logger.debug("[LOGIN] Success: {} (role={})", request.getEmail(), role);
 			return response;
 		} catch (RuntimeException e) {
 			logger.warn("[LOGIN] Failed for {}: {}", request.getEmail(), e.getMessage());
@@ -174,9 +174,9 @@ public class AuthController {
 	
 	private void authenticate(String email, String password) {
 		try {
-			logger.info("[LOGIN] authenticate() calling AuthenticationManager for {}", email);
+			logger.debug("[LOGIN] authenticate() calling AuthenticationManager");
 			authManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
-			logger.info("[LOGIN] authenticate() AuthenticationManager accepted credentials for {}", email);
+			logger.debug("[LOGIN] authenticate() credentials accepted");
 		} catch (Exception e) {
 			// Log full cause for debugging
 			logger.warn("[LOGIN] authenticate() FAILED for {} - Cause: {} - Msg: {}",

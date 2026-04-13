@@ -99,7 +99,7 @@ public class ConflictCheckService {
 
         // ── 4. TEACHER DAILY PERIOD LIMIT (configurable) ──
         if (!isLabEntry) {
-            long dailyPeriods = timetableEntryRepository.countTeacherHoursOnDay(
+            long dailyPeriods = timetableEntryRepository.countTeacherPeriodsOnDay(
                 request.getTeacherId(),
                 request.getAcademicYearId(),
                 request.getDayOfWeek()
