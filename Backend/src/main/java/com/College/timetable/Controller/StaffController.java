@@ -4,7 +4,7 @@ import java.security.Principal;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -86,38 +86,32 @@ public class StaffController {
     @GetMapping("/availability")
     public ResponseEntity<List<TeacherAvailability>> getAvailability(Principal principal) {
         TeacherEntity teacher = teacherService.getByEmail(principal.getName());
-        List<TeacherAvailability> availabilities = availabilityRepo.findAll().stream()
-                .filter(a -> a.getTeacher().getId().equals(teacher.getId()))
-                .toList();
-        return ResponseEntity.ok(availabilities);
+        return ResponseEntity.ok(availabilityRepo.findByTeacherId(teacher.getId()));
     }
 
     /**
      * Save teacher availability — replaces ALL existing entries for this teacher.
-     * Expects JSON array of: { dayOfWeek, startTime, endTime, isAvailable }
+     * Uses typed DTO with validation instead of raw Map.
      */
+    @jakarta.transaction.Transactional
     @PutMapping("/availability")
     public ResponseEntity<String> saveAvailability(
-            @RequestBody List<Map<String, Object>> entries,
+            @Valid @RequestBody List<com.College.timetable.IO.AvailabilityDTO> entries,
             Principal principal) {
         try {
             TeacherEntity teacher = teacherService.getByEmail(principal.getName());
 
-            // Delete existing availability for this teacher
-            List<TeacherAvailability> existing = availabilityRepo.findAll().stream()
-                    .filter(a -> a.getTeacher().getId().equals(teacher.getId()))
-                    .toList();
-            availabilityRepo.deleteAll(existing);
+            // Delete existing and replace atomically within transaction
+            availabilityRepo.deleteByTeacherId(teacher.getId());
 
-            // Create new entries
             List<TeacherAvailability> newEntries = new ArrayList<>();
-            for (Map<String, Object> entry : entries) {
+            for (var dto : entries) {
                 TeacherAvailability avail = new TeacherAvailability();
                 avail.setTeacher(teacher);
-                avail.setDayOfWeek(DayOfWeek.valueOf(entry.get("dayOfWeek").toString()));
-                avail.setStartTime(LocalTime.parse(entry.get("startTime").toString()));
-                avail.setEndTime(LocalTime.parse(entry.get("endTime").toString()));
-                avail.setIsAvailable(Boolean.parseBoolean(entry.get("isAvailable").toString()));
+                avail.setDayOfWeek(dto.getDayOfWeek());
+                avail.setStartTime(LocalTime.parse(dto.getStartTime()));
+                avail.setEndTime(LocalTime.parse(dto.getEndTime()));
+                avail.setIsAvailable(dto.getIsAvailable());
                 newEntries.add(avail);
             }
             availabilityRepo.saveAll(newEntries);

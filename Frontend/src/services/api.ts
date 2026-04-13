@@ -60,14 +60,11 @@ api.interceptors.response.use(
       // 401 Unauthorized - token expired or invalid
       forceLogout();
     } else if (error.response?.status === 403) {
-      // 403 Forbidden - check if it's actually an auth issue or validation error
-      const errorMessage = error.response?.data?.message || error.response?.data || '';
-      const isAuthError = typeof errorMessage === 'string' &&
-        (errorMessage.toLowerCase().includes('token') ||
-          errorMessage.toLowerCase().includes('unauthorized') ||
-          errorMessage.toLowerCase().includes('forbidden'));
-
-      if (isAuthError) {
+      // 403 Forbidden — only force logout if it's a structured auth error from SecurityConfig.
+      // SecurityConfig returns: {"status":403,"error":"AccessDenied"}
+      // Validation errors return different shapes and should NOT trigger logout.
+      const errorCode = error.response?.data?.error;
+      if (errorCode === 'AccessDenied' || errorCode === 'AuthRequired') {
         forceLogout();
       }
     }

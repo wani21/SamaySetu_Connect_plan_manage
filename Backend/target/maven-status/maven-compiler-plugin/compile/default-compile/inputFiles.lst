@@ -37,6 +37,7 @@ C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\C
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\AdminStaffUpdateRequest.java
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\AuthRequest.java
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\AuthResponse.java
+C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\AvailabilityDTO.java
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\ChangeFirstPasswordRequest.java
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\ChangePasswordRequest.java
 C:\Users\abhij\Desktop\SamaySetu_Connect_plan_manage\Backend\src\main\java\com\College\timetable\IO\CreateLabSessionGroupDTO.java

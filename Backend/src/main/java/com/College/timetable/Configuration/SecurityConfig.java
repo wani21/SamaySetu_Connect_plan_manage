@@ -20,7 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
+
 
 import com.College.timetable.Filter.JWTRequestFilter;
 import com.College.timetable.Filter.RateLimitFilter;
@@ -125,27 +125,20 @@ public class SecurityConfig {
 	}
 
 	@Bean
-	public CorsFilter corsFilter() {
-		return new CorsFilter(corsConfigurationSource());
-	}
-	
-	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
 	}
-	
-	private UrlBasedCorsConfigurationSource corsConfigurationSource() {
-		CorsConfiguration conf=new CorsConfiguration();
-		// Use configurable origins from application.properties instead of wildcard
+
+	@Bean
+	public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
+		CorsConfiguration conf = new CorsConfiguration();
 		List<String> origins = Arrays.asList(allowedOrigins.split(","));
 		conf.setAllowedOrigins(origins.stream().map(String::trim).toList());
-		// Restrict allowed methods to what's actually needed
-		conf.setAllowedMethods(List.of("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
-		// Restrict headers instead of allowing all
+		conf.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
 		conf.setAllowedHeaders(List.of("Content-Type", "Authorization", "Accept", "X-Requested-With"));
 		conf.setAllowCredentials(true);
 
-		UrlBasedCorsConfigurationSource src=new UrlBasedCorsConfigurationSource();
+		UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
 		src.registerCorsConfiguration("/**", conf);
 		return src;
 	}

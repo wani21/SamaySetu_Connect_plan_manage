@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { AxiosError } from 'axios';
+import axios from 'axios';
 import { getErrorMessage } from '../utils/errorHandler';
 import toast from 'react-hot-toast';
 
@@ -54,7 +54,7 @@ export function useApiCall<T>(
       }
       return result;
     } catch (err) {
-      const errorMessage = err instanceof AxiosError
+      const errorMessage = axios.isAxiosError(err)
         ? getErrorMessage(err)
         : 'An unexpected error occurred';
       if (mountedRef.current) {

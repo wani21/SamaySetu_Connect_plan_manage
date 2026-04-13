@@ -41,6 +41,7 @@ com\College\timetable\Service\TimetableValidationService.class
 com\College\timetable\Entity\Batch.class
 com\College\timetable\IO\AuthRequest.class
 com\College\timetable\Repository\Division_repo.class
+com\College\timetable\IO\AvailabilityDTO.class
 com\College\timetable\Repository\Batch_repo.class
 com\College\timetable\Service\ConflictCheckService.class
 com\College\timetable\Repository\Lab_session_repo.class

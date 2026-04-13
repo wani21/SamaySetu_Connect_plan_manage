@@ -168,7 +168,7 @@ export const ChangeFirstPasswordPage: React.FC = () => {
                     onChange={handleChange}
                     error={errors.newPassword}
                     icon={<FiLock />}
-                    placeholder="Min. 6 characters"
+                    placeholder="Min. 8 chars, uppercase, lowercase, number, special"
                     autoComplete="new-password"
                   />
                   <button
