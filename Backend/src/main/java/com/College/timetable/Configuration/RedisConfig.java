@@ -31,6 +31,7 @@ public class RedisConfig {
                         .allowIfSubType("com.College.timetable.")
                         .allowIfSubType("java.util.")
                         .allowIfSubType("java.time.")
+                        .allowIfSubType("java.sql.")
                         .build(),
                 ObjectMapper.DefaultTyping.NON_FINAL
         );
