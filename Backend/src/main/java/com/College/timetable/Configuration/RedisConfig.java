@@ -28,7 +28,9 @@ public class RedisConfig {
         // Enable default typing so Redis can deserialize back to the correct Java types
         mapper.activateDefaultTyping(
                 BasicPolymorphicTypeValidator.builder()
-                        .allowIfBaseType(Object.class)
+                        .allowIfSubType("com.College.timetable.")
+                        .allowIfSubType("java.util.")
+                        .allowIfSubType("java.time.")
                         .build(),
                 ObjectMapper.DefaultTyping.NON_FINAL
         );

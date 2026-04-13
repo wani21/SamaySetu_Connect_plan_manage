@@ -106,16 +106,15 @@ public class AuthController {
 	@GetMapping("/reset-password")
 	public ResponseEntity<String> resetPasswordRedirect(@RequestParam("token") String token) {
 		try {
-			// Validate token exists and is not expired
 			teacherservice.validateResetToken(token);
-			// Redirect to frontend with token
+			String encodedToken = java.net.URLEncoder.encode(token, java.nio.charset.StandardCharsets.UTF_8);
 			return ResponseEntity.status(HttpStatus.FOUND)
-					.header("Location", frontendUrl + "/reset-password?token=" + token)
+					.header("Location", frontendUrl + "/reset-password?token=" + encodedToken)
 					.body("Redirecting to password reset page...");
 		} catch (Exception e) {
-			// Redirect to frontend with error
+			String encodedError = java.net.URLEncoder.encode(e.getMessage(), java.nio.charset.StandardCharsets.UTF_8);
 			return ResponseEntity.status(HttpStatus.FOUND)
-					.header("Location", frontendUrl + "/reset-password?error=" + e.getMessage())
+					.header("Location", frontendUrl + "/reset-password?error=" + encodedError)
 					.body("Redirecting to password reset page...");
 		}
 	}

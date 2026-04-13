@@ -35,10 +35,7 @@ public interface TimeSlot_repo extends JpaRepository<TimeSlot, Long> {
      * Used to check whether a lab can span 2 truly consecutive periods
      * with no break in between.
      */
-    @Query("SELECT t FROM TimeSlot t WHERE t.type = :type AND t.isActive = true " +
-           "AND t.startTime >= :afterTime ORDER BY t.startTime ASC LIMIT 1")
-    java.util.Optional<TimeSlot> findImmediateNextSlot(
-        @Param("type") String type,
-        @Param("afterTime") LocalTime afterTime
+    java.util.Optional<TimeSlot> findFirstByTypeAndIsActiveTrueAndStartTimeGreaterThanEqualOrderByStartTimeAsc(
+        String type, LocalTime startTime
     );
 }

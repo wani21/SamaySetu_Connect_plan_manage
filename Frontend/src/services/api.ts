@@ -82,7 +82,7 @@ export const authAPI = {
   login: (credentials: { email: string; password: string }) => api.post('/auth/login', credentials),
   verifyEmail: (token: string) => api.get(`/auth/verify-email?token=${token}`),
   forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (resetData: { token: string; password: string }) => api.post('/auth/reset-password', resetData),
+  resetPassword: (resetData: { token: string; newPassword: string }) => api.post('/auth/reset-password', resetData),
   changeFirstPassword: (changePasswordData: { email: string; newPassword: string }) => api.post('/auth/change-first-password', changePasswordData),
   generateHash: (password: string) => api.post('/auth/', { password }),
 };

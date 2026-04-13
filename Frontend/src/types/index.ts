@@ -1,7 +1,7 @@
 // User & Auth types
 export interface User {
   email: string;
-  role: 'ADMIN' | 'TEACHER' | 'STUDENT';
+  role: 'ADMIN' | 'TEACHER' | 'HOD' | 'TIMETABLE_COORDINATOR';
   token: string;
   name?: string;
   firstLogin?: boolean;

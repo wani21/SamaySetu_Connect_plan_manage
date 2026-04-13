@@ -161,7 +161,7 @@ public class TimetableService {
             String slotType = timeSlot.getType() != null ? timeSlot.getType() : "TYPE_1";
 
             // Find whatever slot comes immediately after (break or lecture)
-            java.util.Optional<TimeSlot> immediateNextOpt = timeSlotRepository.findImmediateNextSlot(
+            java.util.Optional<TimeSlot> immediateNextOpt = timeSlotRepository.findFirstByTypeAndIsActiveTrueAndStartTimeGreaterThanEqualOrderByStartTimeAsc(
                 slotType, timeSlot.getEndTime()
             );
 
@@ -476,7 +476,7 @@ public class TimetableService {
 
         // 3. Validate: check next consecutive slot (lab = 2 periods, no break between)
         String slotType = timeSlot.getType() != null ? timeSlot.getType() : "TYPE_1";
-        java.util.Optional<TimeSlot> immediateNextOpt = timeSlotRepository.findImmediateNextSlot(slotType, timeSlot.getEndTime());
+        java.util.Optional<TimeSlot> immediateNextOpt = timeSlotRepository.findFirstByTypeAndIsActiveTrueAndStartTimeGreaterThanEqualOrderByStartTimeAsc(slotType, timeSlot.getEndTime());
 
         if (immediateNextOpt.isEmpty()) {
             throw new TimetableConflictException(List.of(

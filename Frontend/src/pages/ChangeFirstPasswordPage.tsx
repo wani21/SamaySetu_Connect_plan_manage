@@ -33,8 +33,10 @@ export const ChangeFirstPasswordPage: React.FC = () => {
 
     if (!formData.newPassword) {
       newErrors.newPassword = 'Password is required';
-    } else if (formData.newPassword.length < 6) {
-      newErrors.newPassword = 'Password must be at least 6 characters';
+    } else if (formData.newPassword.length < 8) {
+      newErrors.newPassword = 'Password must be at least 8 characters';
+    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/.test(formData.newPassword)) {
+      newErrors.newPassword = 'Password must contain uppercase, lowercase, number, and special character (@$!%*?&#)';
     }
 
     if (!formData.confirmPassword) {
