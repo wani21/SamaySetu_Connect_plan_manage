@@ -122,7 +122,7 @@ export const AcademicStructurePage: React.FC = () => {
       const activeStaff = (Array.isArray(response.data) ? response.data : [])
         .filter((s: any) => s.isActive && s.isEmailVerified);
       setStaffList(activeStaff);
-    } catch (error) { console.error('Failed to fetch staff'); }
+    } catch (error) { console.error('Failed to fetch faculty'); }
   };
 
   const filterStaffSuggestions = (query: string) => {
@@ -745,7 +745,7 @@ export const AcademicStructurePage: React.FC = () => {
                 }} 
                 onFocus={() => setShowHodSuggestions(formData.headOfDepartment?.length >= 2)}
                 onBlur={() => setTimeout(() => setShowHodSuggestions(false), 200)}
-                placeholder="Start typing to search staff..." 
+                placeholder="Start typing to search faculty..." 
                 autoComplete="off"
               />
               {showHodSuggestions && hodSuggestions.length > 0 && (
@@ -807,7 +807,7 @@ export const AcademicStructurePage: React.FC = () => {
                 }} 
                 onFocus={() => setShowTeacherSuggestions(formData.classTeacher?.length >= 2)}
                 onBlur={() => setTimeout(() => setShowTeacherSuggestions(false), 200)}
-                placeholder="Start typing to search staff..." 
+                placeholder="Start typing to search faculty..." 
                 autoComplete="off"
               />
               {showTeacherSuggestions && teacherSuggestions.length > 0 && (

@@ -49,7 +49,7 @@ export const StaffManagementPage: React.FC = () => {
       const response = await teacherAdminAPI.getAll();
       setStaff(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      toast.error('Failed to fetch staff');
+      toast.error('Failed to fetch faculty');
       setStaff([]);
     }
   };
@@ -108,7 +108,7 @@ export const StaffManagementPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'staff_template.csv';
+      a.download = 'faculty_template.csv';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -184,7 +184,7 @@ export const StaffManagementPage: React.FC = () => {
           departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
         };
         await adminAPI.updateStaff(editingStaff.id, updateData);
-        toast.success('Staff updated successfully!');
+        toast.success('Faculty updated successfully!');
       } else {
         await adminAPI.createStaffManually({
           name: formData.name,
@@ -197,7 +197,7 @@ export const StaffManagementPage: React.FC = () => {
           departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
           role: formData.role,
         });
-        toast.success('Staff created successfully!');
+        toast.success('Faculty created successfully!');
       }
       setShowModal(false);
       resetForm();
@@ -215,10 +215,11 @@ export const StaffManagementPage: React.FC = () => {
     
     try {
       await teacherAdminAPI.delete(id);
-      toast.success('Staff deleted successfully!');
+      toast.success('Faculty deleted successfully!');
       fetchStaff();
     } catch (error: any) {
-      toast.error(getErrorMessage(error));
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
     }
   };
 
@@ -240,8 +241,8 @@ export const StaffManagementPage: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Staff Management</h1>
-          <p className="text-gray-600 mt-1">Manage teaching staff and their details</p>
+          <h1 className="text-3xl font-bold text-gray-900">Faculty Management</h1>
+          <p className="text-gray-600 mt-1">Manage teaching faculty and their details</p>
         </div>
         <Button
           variant="primary"
@@ -251,7 +252,7 @@ export const StaffManagementPage: React.FC = () => {
           }}
           className="flex items-center gap-2"
         >
-          <FiPlus /> Add Staff
+          <FiPlus /> Add Faculty
         </Button>
       </div>
 
@@ -266,7 +267,7 @@ export const StaffManagementPage: React.FC = () => {
           }`}
         >
           <FiUsers className="inline mr-2" />
-          Staff List ({staff.length})
+          Faculty List ({staff.length})
         </button>
         <button
           onClick={() => setActiveTab('upload')}
@@ -372,7 +373,7 @@ export const StaffManagementPage: React.FC = () => {
               </table>
               {filteredStaff.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
-                  {staff.length === 0 ? 'No staff members found. Add staff using the button above or Bulk Registration.' : 'No staff match your search criteria.'}
+                  {staff.length === 0 ? 'No faculty members found. Add faculty using the button above or Bulk Registration.' : 'No faculty match your search criteria.'}
                 </div>
               )}
             </div>
@@ -388,8 +389,8 @@ export const StaffManagementPage: React.FC = () => {
               <div className="mx-auto w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4">
                 <FiUpload className="w-8 h-8 text-primary-600" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Bulk Staff Registration</h2>
-              <p className="text-gray-600">Upload a CSV file to add multiple staff members at once</p>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Bulk Faculty Registration</h2>
+              <p className="text-gray-600">Upload a CSV file to add multiple faculty members at once</p>
             </div>
 
             {/* Download Template */}
@@ -397,7 +398,7 @@ export const StaffManagementPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-blue-900">Download CSV Template</p>
-                  <p className="text-sm text-blue-700">Use this template to format your staff data correctly</p>
+                  <p className="text-sm text-blue-700">Use this template to format your faculty data correctly</p>
                 </div>
                 <Button
                   variant="outline"
@@ -458,7 +459,7 @@ export const StaffManagementPage: React.FC = () => {
               disabled={!selectedFile}
               className="w-full"
             >
-              Upload Staff
+              Upload Faculty
             </Button>
 
             {uploadResult && (
@@ -478,25 +479,25 @@ export const StaffManagementPage: React.FC = () => {
                 <li>• First row should be headers: Name, Employee ID, Email, Phone, Specialization, Min Weekly Hours, Max Weekly Hours</li>
                 <li>• Email must be a valid college email ({APP_CONFIG.COLLEGE_EMAIL_DOMAIN})</li>
                 <li>• Employee ID must be unique</li>
-                <li>• A temporary password will be assigned to each staff member</li>
+                <li>• A temporary password will be assigned to each faculty member</li>
                 {import.meta.env.DEV && (
                   <li className="text-amber-600">• <strong>[DEV ONLY]</strong> Default test password: <code className="bg-amber-100 px-1 rounded">mitaoe@123</code></li>
                 )}
-                <li>• Staff will be required to change password on first login</li>
+                <li>• Faculty will be required to change password on first login</li>
               </ul>
             </div>
           </div>
         </Card>
       )}
 
-      {/* Add/Edit Staff Modal */}
+      {/* Add/Edit Faculty Modal */}
       <Modal
         isOpen={showModal}
         onClose={() => {
           setShowModal(false);
           resetForm();
         }}
-        title={isEditMode ? "Edit Staff" : "Add New Staff"}
+        title={isEditMode ? "Edit Faculty" : "Add New Faculty"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -608,7 +609,7 @@ export const StaffManagementPage: React.FC = () => {
               {import.meta.env.DEV && (
                 <p className="text-amber-600"><strong>[DEV ONLY]</strong> Test password: <code className="bg-amber-100 px-1 rounded">mitaoe@123</code></p>
               )}
-              <p>Staff must change password on first login.</p>
+              <p>Faculty must change password on first login.</p>
             </div>
           )}
 
@@ -627,7 +628,7 @@ export const StaffManagementPage: React.FC = () => {
               isLoading={isLoading}
               className="flex-1"
             >
-              {isEditMode ? 'Update Staff' : 'Create Staff'}
+              {isEditMode ? 'Update Faculty' : 'Create Faculty'}
             </Button>
           </div>
         </form>

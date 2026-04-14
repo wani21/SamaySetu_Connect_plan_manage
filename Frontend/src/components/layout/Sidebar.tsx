@@ -39,9 +39,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     // Academic Structure — all admin-layout roles
     links.push({ to: '/admin/academic-structure', icon: FiLayers, label: 'Academic Structure' });
 
-    // Staff management — ADMIN and HOD only
+    // Faculty management — ADMIN and HOD only
     if (role === 'ADMIN' || role === 'HOD') {
-      links.push({ to: '/admin/staff', icon: FiUsers, label: 'Staff' });
+      links.push({ to: '/admin/staff', icon: FiUsers, label: 'Faculty' });
     }
 
     // Rooms — all admin-layout roles
