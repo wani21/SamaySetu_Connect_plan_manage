@@ -281,8 +281,28 @@ The `Scripts/seed_data.sql` script creates realistic development data for MITAOE
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the **Samaysetu Proprietary License**.
+
+© 2026 Samaysetu Project  
+All rights reserved.
+
+This software is provided strictly for academic evaluation purposes.  
+Unauthorized copying, modification, distribution, or commercial use of this software, in whole or in part, is strictly prohibited without prior written permission from the authors.
+
+For full license terms, see the `LICENSE` file in this repository.
 
 ---
 
-Built for MIT Academy of Engineering, Alandi, Pune, Maharashtra.
+## Copyright
+
+© 2026 Samaysetu Project
+
+Authors:  
+Rohan Wani <wanirohan21@gmail.com>  
+Abhijeet Rane <abhijeetrane204@gmail.com>  
+Suryank Chavan <suryankchavan05@gmail.com>  
+Swarup Daphal <swarupdaphal@gmail.com>  
+
+All rights reserved.
+
+This project and its source code are the intellectual property of the above-mentioned authors.
