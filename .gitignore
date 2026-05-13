@@ -78,6 +78,15 @@ logs/
 *.log
 *.log.*
 
+# Terraform local state and secrets
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfvars
+**/*.auto.tfvars
+crash.log
+crash.*.log
+
 # Build outputs
 out/
 build/

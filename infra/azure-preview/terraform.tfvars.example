@@ -1,0 +1,24 @@
+subscription_id         = "01841f56-5dc1-486f-b327-618601cde029"
+resource_group_name    = "rg-samaysetu-preview"
+app_location           = "Central India"
+database_location      = "Southeast Asia"
+app_service_plan_name  = "asp-samaysetu-preview"
+web_app_name           = "samaysetu-preview-api"
+postgres_server_name   = "psql-samaysetu-preview"
+postgres_database_name = "samaysetu_preview"
+postgres_admin_username = "samaysetuadmin"
+
+# Do not commit terraform.tfvars. Set the real value locally or with:
+# $env:TF_VAR_postgres_admin_password = "<strong-postgres-password>"
+postgres_admin_password = "REPLACE_WITH_STRONG_PASSWORD"
+
+frontend_url = "https://samaysetu.vercel.app"
+
+# Optional: add your local public IP only when you want to test PostgreSQL from your laptop.
+# allowed_client_ip_ranges = [
+#   {
+#     name     = "my-current-ip"
+#     start_ip = "203.0.113.10"
+#     end_ip   = "203.0.113.10"
+#   }
+# ]
