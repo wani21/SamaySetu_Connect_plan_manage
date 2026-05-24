@@ -78,19 +78,20 @@ public class CourseController {
 	}
 	
 	/**
-	 * GET /admin/api/courses/{courseId}/available-batches?divisionId=1&academicYearId=1
+	 * GET /admin/api/courses/{courseId}/available-batches?divisionId=1&academicYearId=1&semester=SEM_3
 	 * Get available batches for a specific lab course.
-	 * Returns batches that have NOT been allocated this lab course yet.
+	 * Returns batches that have NOT been allocated this lab course yet FOR THIS SEMESTER.
 	 * Used for dynamic batch filtering when a lab course is selected.
 	 */
 	@GetMapping("/{courseId}/available-batches")
 	public ResponseEntity<List<java.util.Map<String, Object>>> getAvailableBatchesForCourse(
 		@PathVariable Long courseId,
 		@RequestParam Long divisionId,
-		@RequestParam Long academicYearId
+		@RequestParam Long academicYearId,
+		@RequestParam(required = false) String semester
 	) {
 		List<java.util.Map<String, Object>> available = courseService.getAvailableBatchesForCourse(
-			courseId, divisionId, academicYearId
+			courseId, divisionId, academicYearId, semester != null ? Semester.valueOf(semester) : null
 		);
 		return ResponseEntity.ok(available);
 	}

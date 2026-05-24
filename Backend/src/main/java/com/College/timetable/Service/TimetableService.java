@@ -15,6 +15,7 @@ import com.College.timetable.Entity.ClassRoom;
 import com.College.timetable.Entity.CourseEntity;
 import com.College.timetable.Entity.Division;
 import com.College.timetable.Entity.LabSessionGroup;
+import com.College.timetable.Entity.Semester;
 import com.College.timetable.Entity.TeacherEntity;
 import com.College.timetable.Entity.TimeSlot;
 import com.College.timetable.Entity.TimetableEntry;
@@ -322,27 +323,27 @@ public class TimetableService {
     }
 
     // ---------------------------------------------------------------
-    // PUBLISH — Admin reviewed DRAFT, now make it live
+    // PUBLISH — Admin reviewed DRAFT, now make it live (per semester)
     // ---------------------------------------------------------------
 
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int publishTimetable(Long divisionId, Long academicYearId) {
-        int count = timetableRepo.publishDivisionTimetable(divisionId, academicYearId);
+    public int publishTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        int count = timetableRepo.publishDivisionTimetableBySemester(divisionId, academicYearId, semester);
         if (count == 0) {
-            throw new RuntimeException("No draft entries found to publish for this division.");
+            throw new RuntimeException("No draft entries found to publish for this division and semester.");
         }
         return count;
     }
 
     // ---------------------------------------------------------------
-    // ARCHIVE — End of semester, move PUBLISHED to ARCHIVED
+    // ARCHIVE — End of semester, move PUBLISHED to ARCHIVED (per semester)
     // ---------------------------------------------------------------
 
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int archiveTimetable(Long divisionId, Long academicYearId) {
-        return timetableRepo.archiveDivisionTimetable(divisionId, academicYearId);
+    public int archiveTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        return timetableRepo.archiveDivisionTimetableBySemester(divisionId, academicYearId, semester);
     }
 
     // ---------------------------------------------------------------
@@ -370,20 +371,21 @@ public class TimetableService {
 
     /**
      * Get DRAFT timetable for admin review — NOT cached
+     * Filters by semester to show only entries for that specific semester
      */
-    public List<TimetableEntry> getDraftTimetable(Long divisionId, Long academicYearId) {
+    public List<TimetableEntry> getDraftTimetable(Long divisionId, Long academicYearId, Semester semester) {
         return timetableRepo
-            .findByDivisionIdAndAcademicYearIdAndStatusOrderByDayOfWeekAscTimeSlotAsc(
-                divisionId, academicYearId, TimetableStatus.DRAFT);
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.DRAFT, semester);
     }
 
     /**
-     * Clear all DRAFT entries for a division — start fresh
+     * Clear all DRAFT entries for a division and semester — start fresh
      */
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int clearDraft(Long divisionId, Long academicYearId) {
-        return timetableRepo.clearDraftTimetable(divisionId, academicYearId);
+    public int clearDraft(Long divisionId, Long academicYearId, Semester semester) {
+        return timetableRepo.clearDraftTimetableBySemester(divisionId, academicYearId, semester);
     }
 
     // ---------------------------------------------------------------
@@ -608,13 +610,15 @@ public class TimetableService {
     /**
      * Get available rooms for a specific day + time slot.
      * Filters out rooms that are already booked (occupied) at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
      * Considers room type compatibility and capacity.
      */
     public List<ClassRoom> getAvailableRooms(
         com.College.timetable.Entity.DayOfWeek day,
         Long slotId,
         Long academicYearId,
-        Long divisionId
+        Long divisionId,
+        Semester semester
     ) {
         // Get all active rooms
         List<ClassRoom> allRooms = classRoomRepository.findAll().stream()
@@ -622,11 +626,13 @@ public class TimetableService {
             .toList();
 
         // Get all booked room IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        // Check conflicts across all semesters in the same series (odd or even)
         List<Long> bookedRoomIds = timetableRepo.findAll().stream()
             .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
             .filter(e -> e.getDayOfWeek() == day)
             .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
             .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .filter(e -> e.getSemester() != null && semester != null && semester.isSameSeries(e.getSemester())) // Same series check
             .map(e -> e.getRoom() != null ? e.getRoom().getId() : null)
             .filter(java.util.Objects::nonNull)
             .distinct()
@@ -641,12 +647,14 @@ public class TimetableService {
     /**
      * Get available teachers for a specific day + time slot.
      * Filters out teachers that are already assigned at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
      * Assumes teacher is available unless occupied or explicitly marked unavailable.
      */
     public List<TeacherEntity> getAvailableTeachers(
         com.College.timetable.Entity.DayOfWeek day,
         Long slotId,
-        Long academicYearId
+        Long academicYearId,
+        Semester semester
     ) {
         // Get all active teachers
         List<TeacherEntity> allTeachers = teacherRepository.findAll().stream()
@@ -654,11 +662,13 @@ public class TimetableService {
             .toList();
 
         // Get all booked teacher IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        // Check conflicts across all semesters in the same series (odd or even)
         List<Long> bookedTeacherIds = timetableRepo.findAll().stream()
             .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
             .filter(e -> e.getDayOfWeek() == day)
             .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
             .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .filter(e -> e.getSemester() != null && semester != null && semester.isSameSeries(e.getSemester())) // Same series check
             .map(e -> e.getTeacher() != null ? e.getTeacher().getId() : null)
             .filter(java.util.Objects::nonNull)
             .distinct()

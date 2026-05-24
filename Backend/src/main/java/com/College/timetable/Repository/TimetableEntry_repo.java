@@ -227,6 +227,16 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
         );
 
         /**
+         * Get all DRAFT entries for a division filtered by semester
+         */
+        List<TimetableEntry> findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+            Long divisionId,
+            Long academicYearId,
+            TimetableStatus status,
+            com.College.timetable.Entity.Semester semester
+        );
+
+        /**
          * Get all entries in a lab session group
          */
         List<TimetableEntry> findByLabSessionGroupId(Long labSessionGroupId);
@@ -247,6 +257,23 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
         );
 
         /**
+         * Publish all DRAFT entries for a division and semester — flip to PUBLISHED
+         */
+        @Modifying
+        @Query("""
+            UPDATE TimetableEntry t SET t.status = 'PUBLISHED'
+            WHERE t.division.id = :divisionId
+            AND t.academicYear.id = :academicYearId
+            AND t.semester = :semester
+            AND t.status = 'DRAFT'
+            """)
+        int publishDivisionTimetableBySemester(
+            @Param("divisionId") Long divisionId,
+            @Param("academicYearId") Long academicYearId,
+            @Param("semester") com.College.timetable.Entity.Semester semester
+        );
+
+        /**
          * Archive all PUBLISHED entries for a division — end of semester
          */
         @Modifying
@@ -262,6 +289,23 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
         );
 
         /**
+         * Archive all PUBLISHED entries for a division and semester — end of semester
+         */
+        @Modifying
+        @Query("""
+            UPDATE TimetableEntry t SET t.status = 'ARCHIVED'
+            WHERE t.division.id = :divisionId
+            AND t.academicYear.id = :academicYearId
+            AND t.semester = :semester
+            AND t.status = 'PUBLISHED'
+            """)
+        int archiveDivisionTimetableBySemester(
+            @Param("divisionId") Long divisionId,
+            @Param("academicYearId") Long academicYearId,
+            @Param("semester") com.College.timetable.Entity.Semester semester
+        );
+
+        /**
          * Delete all DRAFT entries for a division (reset and start fresh)
          */
         @Modifying
@@ -274,5 +318,22 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
         int clearDraftTimetable(
             @Param("divisionId") Long divisionId,
             @Param("academicYearId") Long academicYearId
+        );
+
+        /**
+         * Delete all DRAFT entries for a division and semester (reset and start fresh)
+         */
+        @Modifying
+        @Query("""
+            DELETE FROM TimetableEntry t
+            WHERE t.division.id = :divisionId
+            AND t.academicYear.id = :academicYearId
+            AND t.semester = :semester
+            AND t.status = 'DRAFT'
+            """)
+        int clearDraftTimetableBySemester(
+            @Param("divisionId") Long divisionId,
+            @Param("academicYearId") Long academicYearId,
+            @Param("semester") com.College.timetable.Entity.Semester semester
         );
 }

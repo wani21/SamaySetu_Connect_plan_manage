@@ -209,26 +209,26 @@ export const timetableAPI = {
     api.get(`/api/timetable/division/${divisionId}?academicYearId=${academicYearId}`),
   getByTeacher: (teacherId: number, academicYearId: number) =>
     api.get(`/api/timetable/teacher/${teacherId}?academicYearId=${academicYearId}`),
-  getDraft: (divisionId: number, academicYearId: number) =>
-    api.get(`/api/timetable/draft?divisionId=${divisionId}&academicYearId=${academicYearId}`),
+  getDraft: (divisionId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/draft?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}`),
   // Admin write operations
   addEntry: (entryData: any) => api.post('/api/timetable/entries', entryData),
   updateEntry: (id: number, entryData: any) => api.put(`/api/timetable/entries/${id}`, entryData),
   deleteEntry: (id: number) => api.delete(`/api/timetable/entries/${id}`),
   validate: (divisionId: number, academicYearId: number) =>
     api.get(`/api/timetable/validate?divisionId=${divisionId}&academicYearId=${academicYearId}`),
-  publish: (divisionId: number, academicYearId: number, force: boolean = false) =>
-    api.post(`/api/timetable/publish?divisionId=${divisionId}&academicYearId=${academicYearId}&force=${force}`),
-  archive: (divisionId: number, academicYearId: number) =>
-    api.post(`/api/timetable/archive?divisionId=${divisionId}&academicYearId=${academicYearId}`),
-  clearDraft: (divisionId: number, academicYearId: number) =>
-    api.delete(`/api/timetable/draft?divisionId=${divisionId}&academicYearId=${academicYearId}`),
+  publish: (divisionId: number, academicYearId: number, semester: string, force: boolean = false) =>
+    api.post(`/api/timetable/publish?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}&force=${force}`),
+  archive: (divisionId: number, academicYearId: number, semester: string) =>
+    api.post(`/api/timetable/archive?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}`),
+  clearDraft: (divisionId: number, academicYearId: number, semester: string) =>
+    api.delete(`/api/timetable/draft?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}`),
   createLabGroup: (labGroupData: any) => api.post('/api/timetable/lab-groups', labGroupData),
-  // Export
-  exportDivisionPDF: (divisionId: number, academicYearId: number) =>
-    api.get(`/api/timetable/export/division/${divisionId}/pdf?academicYearId=${academicYearId}`, { responseType: 'blob' }),
-  exportDivisionExcel: (divisionId: number, academicYearId: number) =>
-    api.get(`/api/timetable/export/division/${divisionId}/excel?academicYearId=${academicYearId}`, { responseType: 'blob' }),
+  // Export (semester-specific)
+  exportDivisionPDF: (divisionId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/export/division/${divisionId}/pdf?academicYearId=${academicYearId}&semester=${semester}`, { responseType: 'blob' }),
+  exportDivisionExcel: (divisionId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/export/division/${divisionId}/excel?academicYearId=${academicYearId}&semester=${semester}`, { responseType: 'blob' }),
   exportTeacherPDF: (teacherId: number, academicYearId: number) =>
     api.get(`/api/timetable/export/teacher/${teacherId}/pdf?academicYearId=${academicYearId}`, { responseType: 'blob' }),
   exportTeacherExcel: (teacherId: number, academicYearId: number) =>
@@ -238,10 +238,10 @@ export const timetableAPI = {
   copyFromDivision: (sourceDivisionId: number, targetDivisionId: number, academicYearId: number) =>
     api.post(`/api/timetable/copy?sourceDivisionId=${sourceDivisionId}&targetDivisionId=${targetDivisionId}&academicYearId=${academicYearId}`),
   // Availability filtering
-  getAvailableRooms: (day: string, slotId: number, academicYearId: number, divisionId?: number) =>
-    api.get(`/api/timetable/available-rooms?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}${divisionId ? `&divisionId=${divisionId}` : ''}`),
-  getAvailableTeachers: (day: string, slotId: number, academicYearId: number) =>
-    api.get(`/api/timetable/available-teachers?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}`),
+  getAvailableRooms: (day: string, slotId: number, academicYearId: number, semester: string, divisionId?: number) =>
+    api.get(`/api/timetable/available-rooms?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}${divisionId ? `&divisionId=${divisionId}` : ''}`),
+  getAvailableTeachers: (day: string, slotId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/available-teachers?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}`),
 };
 
 // Staff API (for restricted profile updates)

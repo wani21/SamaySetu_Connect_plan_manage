@@ -8,10 +8,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.College.timetable.Entity.CourseEntity;
 import com.College.timetable.Entity.DepartmentEntity;
+import com.College.timetable.Entity.Division;
 import com.College.timetable.Entity.Semester;
 import com.College.timetable.Entity.TimetableStatus;
 import com.College.timetable.Repository.Course_repo;
 import com.College.timetable.Repository.Dep_repo;
+import com.College.timetable.Repository.Division_repo;
 import com.College.timetable.Repository.TimetableEntry_repo;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -28,6 +30,8 @@ public class CourseService {
 	@Autowired
 	private TimetableEntry_repo timetableEntryRepo;
 	
+	@Autowired
+	private Division_repo divisionRepo;
 	@Autowired
 	private com.College.timetable.Repository.Batch_repo batchRepo;
 	
@@ -102,9 +106,20 @@ public class CourseService {
 		Long academicYearId,
 		Semester semester
 	) {
-		// Get all active courses (optionally filtered by semester)
+		// Get division details to extract department and year
+		Division division = divisionRepo.findById(divisionId).orElse(null);
+		if (division == null) {
+			return new java.util.ArrayList<>();
+		}
+		
+		Long departmentId = division.getDepartment() != null ? division.getDepartment().getId() : null;
+		Integer year = division.getYear();
+		
+		// Get all active courses filtered by department, year, and semester
 		List<CourseEntity> allCourses = course.findAll().stream()
 			.filter(c -> Boolean.TRUE.equals(c.getIsActive()))
+			.filter(c -> departmentId == null || (c.getDepartment() != null && c.getDepartment().getId().equals(departmentId)))
+			.filter(c -> year == null || (c.getYear() != null && c.getYear().equals(year)))
 			.filter(c -> semester == null || c.getSemester() == semester)
 			.toList();
 		
@@ -115,12 +130,13 @@ public class CourseService {
 		
 		for (CourseEntity courseEntity : allCourses) {
 			if (courseEntity.getCourseType() == com.College.timetable.Entity.CourseType.LAB) {
-				// LAB LOGIC: Count unique batches that have this lab course
+				// LAB LOGIC: Count unique batches that have this lab course FOR THIS SEMESTER
 				long batchesWithThisLab = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
 					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.filter(e -> e.getBatch() != null)
 					.map(e -> e.getBatch().getId())
 					.distinct()
@@ -144,15 +160,16 @@ public class CourseService {
 					result.add(courseWithInstance);
 				}
 			} else {
-				// THEORY LOGIC: Division-level progressive allocation
+				// THEORY LOGIC: Division-level progressive allocation FOR THIS SEMESTER
 				int maxInstances = courseEntity.getHoursPerWeek();
 				
-				// Count existing DRAFT entries for this course in this division
+				// Count existing DRAFT entries for this course in this division FOR THIS SEMESTER
 				long existingCount = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
 					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.count();
 				
 				// Calculate next available instance
@@ -187,29 +204,32 @@ public class CourseService {
 	
 	/**
 	 * Get available batches for a specific lab course.
-	 * Returns batches that have NOT been allocated this lab course yet.
+	 * Returns batches that have NOT been allocated this lab course yet FOR THIS SEMESTER.
 	 * Used for dynamic batch filtering when a lab course is selected in the UI.
 	 * 
 	 * @param courseId The lab course ID
 	 * @param divisionId The division ID
 	 * @param academicYearId The academic year ID
+	 * @param semester The semester to filter by
 	 * @return List of batches that don't have this lab course allocated
 	 */
 	@Transactional(readOnly = true)
 	public List<java.util.Map<String, Object>> getAvailableBatchesForCourse(
 		Long courseId,
 		Long divisionId,
-		Long academicYearId
+		Long academicYearId,
+		Semester semester
 	) {
 		// Get all batches for this division
 		List<com.College.timetable.Entity.Batch> allBatches = batchRepo.findByDivisionId(divisionId);
 		
-		// Get batches that already have this lab course allocated
+		// Get batches that already have this lab course allocated FOR THIS SEMESTER
 		java.util.Set<Long> allocatedBatchIds = timetableEntryRepo.findAll().stream()
 			.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 			.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 			.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseId))
 			.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+			.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 			.filter(e -> e.getBatch() != null)
 			.map(e -> e.getBatch().getId())
 			.collect(java.util.stream.Collectors.toSet());

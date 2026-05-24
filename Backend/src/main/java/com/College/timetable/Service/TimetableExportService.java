@@ -44,20 +44,26 @@ public class TimetableExportService {
     private static final String[] DAY_LABELS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
     // ═══════════════════════════════════════════════════════════════
-    // PDF GENERATION
+    // PDF GENERATION (Semester-Specific)
     // ═══════════════════════════════════════════════════════════════
 
-    public byte[] generateDivisionPDF(Long divisionId, Long academicYearId) throws Exception {
-        List<TimetableEntry> entries = timetableService.getDivisionTimetable(divisionId, academicYearId);
+    public byte[] generateDivisionPDF(Long divisionId, Long academicYearId, Semester semester) throws Exception {
+        // Get all entries for division and filter by semester
+        List<TimetableEntry> allEntries = timetableService.getDivisionTimetable(divisionId, academicYearId);
+        List<TimetableEntry> entries = allEntries.stream()
+            .filter(e -> e.getSemester() == semester)
+            .collect(Collectors.toList());
+            
         Division division = divisionRepo.findById(divisionId).orElse(null);
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
         List<TimeSlot> slots = getSortedSlots(division);
 
-        String title = String.format("Timetable — %s %s — Year %d — %s",
+        String title = String.format("Timetable — %s %s — Year %d — %s — %s",
             division != null && division.getDepartment() != null ? division.getDepartment().getName() : "",
             division != null ? division.getName() : "",
             division != null ? division.getYear() : 0,
-            year != null ? year.getYearName() : "");
+            year != null ? year.getYearName() : "",
+            semester != null ? semester.name().replace("_", " ") : "");
 
         return buildPDF(entries, slots, title);
     }
@@ -230,21 +236,27 @@ public class TimetableExportService {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // EXCEL GENERATION
+    // EXCEL GENERATION (Semester-Specific)
     // ═══════════════════════════════════════════════════════════════
 
-    public byte[] generateDivisionExcel(Long divisionId, Long academicYearId) throws Exception {
-        List<TimetableEntry> entries = timetableService.getDivisionTimetable(divisionId, academicYearId);
+    public byte[] generateDivisionExcel(Long divisionId, Long academicYearId, Semester semester) throws Exception {
+        // Get all entries for division and filter by semester
+        List<TimetableEntry> allEntries = timetableService.getDivisionTimetable(divisionId, academicYearId);
+        List<TimetableEntry> entries = allEntries.stream()
+            .filter(e -> e.getSemester() == semester)
+            .collect(Collectors.toList());
+            
         Division division = divisionRepo.findById(divisionId).orElse(null);
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
         List<TimeSlot> slots = getSortedSlots(division);
 
-        String sheetName = (division != null ? division.getName() + " Year " + division.getYear() : "Timetable");
-        String title = String.format("Timetable — %s %s — Year %d — %s",
+        String sheetName = (division != null ? division.getName() + " Year " + division.getYear() + " " + (semester != null ? semester.name() : "") : "Timetable");
+        String title = String.format("Timetable — %s %s — Year %d — %s — %s",
             division != null && division.getDepartment() != null ? division.getDepartment().getName() : "",
             division != null ? division.getName() : "",
             division != null ? division.getYear() : 0,
-            year != null ? year.getYearName() : "");
+            year != null ? year.getYearName() : "",
+            semester != null ? semester.name().replace("_", " ") : "");
 
         return buildExcel(entries, slots, sheetName, title);
     }

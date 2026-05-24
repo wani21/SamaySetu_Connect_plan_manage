@@ -17,7 +17,7 @@ import { Modal } from '../common/Modal';
 import { getErrorMessage } from '../../utils/errorHandler';
 import {
   timetableAPI, academicYearAPI, divisionAPI,
-  courseAPI, teacherAdminAPI, roomAPI, timeSlotAPI, batchAPI,
+  courseAPI, teacherAdminAPI, roomAPI, timeSlotAPI, batchAPI, departmentAPI,
 } from '../../services/api';
 
 // ─── Draggable Entry Card ────────────────────────────────────────────
@@ -129,8 +129,12 @@ const DAY_LABELS: Record<string, string> = {
 export const TimetableManagementPage: React.FC = () => {
   // Selection state
   const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [divisions, setDivisions] = useState<any[]>([]);
   const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
   const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(null);
 
   // Timetable data
@@ -150,9 +154,6 @@ export const TimetableManagementPage: React.FC = () => {
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [conflicts, setConflicts] = useState<string[]>([]);
 
-  // Semester filter
-  const [selectedSemester, setSelectedSemester] = useState<string>('');
-
   // Filter time slots by the selected division's slot type (TYPE_1, TYPE_2, etc.)
   // This prevents showing duplicate slots when multiple types exist in the database.
   const filteredTimeSlots = useMemo(() => {
@@ -161,8 +162,51 @@ export const TimetableManagementPage: React.FC = () => {
     return timeSlots.filter((s: any) => !s.type || s.type === slotType);
   }, [timeSlots, divisions, selectedDivisionId]);
 
-  // Lab session wizard
-  const [showLabWizard, setShowLabWizard] = useState(false);
+  // Get available branches (departments) for selected academic year
+  const availableBranches = useMemo(() => {
+    if (!selectedYearId) return [];
+    // Show only departments that have divisions in the selected academic year
+    const departmentIds = new Set(divisions.map((d: any) => d.department?.id).filter(Boolean));
+    return departments
+      .filter((dept: any) => departmentIds.has(dept.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments, divisions, selectedYearId]);
+
+  // Get available years - always show 1-4
+  const availableYears = useMemo(() => {
+    return [1, 2, 3, 4];
+  }, []);
+
+  // Check if divisions exist for selected year
+  const divisionsExistForYear = useMemo(() => {
+    if (!selectedYearId || !selectedDepartmentId || !selectedYear) return true;
+    return divisions.some((d: any) => 
+      d.department?.id === selectedDepartmentId && d.year === selectedYear
+    );
+  }, [divisions, selectedYearId, selectedDepartmentId, selectedYear]);
+
+  // Get available semesters for selected year - always show both semesters
+  const availableSemesters = useMemo(() => {
+    if (!selectedYear) return [];
+    // Year 1 = Sem 1, 2; Year 2 = Sem 3, 4; Year 3 = Sem 5, 6; Year 4 = Sem 7, 8
+    const semStart = (selectedYear - 1) * 2 + 1;
+    return [
+      { value: `SEM_${semStart}`, label: `Semester ${semStart}` },
+      { value: `SEM_${semStart + 1}`, label: `Semester ${semStart + 1}` },
+    ];
+  }, [selectedYear]);
+
+  // Get filtered divisions based on all selections
+  const filteredDivisions = useMemo(() => {
+    let filtered = divisions;
+    if (selectedDepartmentId) {
+      filtered = filtered.filter((d: any) => d.department?.id === selectedDepartmentId);
+    }
+    if (selectedYear) {
+      filtered = filtered.filter((d: any) => d.year === selectedYear);
+    }
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  }, [divisions, selectedDepartmentId, selectedYear]);
 
   // Pre-filled day/slot when clicking a cell
   const [prefillDay, setPrefillDay] = useState<string | null>(null);
@@ -172,12 +216,13 @@ export const TimetableManagementPage: React.FC = () => {
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [yearsRes, slotsRes, coursesRes, teachersRes, roomsRes] = await Promise.all([
+        const [yearsRes, slotsRes, coursesRes, teachersRes, roomsRes, deptsRes] = await Promise.all([
           academicYearAPI.getAll(),
           timeSlotAPI.getAll(),
           courseAPI.getAll(),
           teacherAdminAPI.getAll(),
           roomAPI.getAll(),
+          departmentAPI.getAll(),
         ]);
 
         const years = Array.isArray(yearsRes.data) ? yearsRes.data : [];
@@ -191,6 +236,7 @@ export const TimetableManagementPage: React.FC = () => {
         setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
         setTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
         setRooms(Array.isArray(roomsRes.data) ? roomsRes.data : []);
+        setDepartments(Array.isArray(deptsRes.data) ? deptsRes.data : []);
 
         // Auto-select current year
         const current = years.find((y: any) => y.isCurrent);
@@ -207,10 +253,13 @@ export const TimetableManagementPage: React.FC = () => {
     loadInitial();
   }, []);
 
-  // Load divisions when year changes
+  // Load divisions when year, department, or year changes
   useEffect(() => {
     if (!selectedYearId) {
       setDivisions([]);
+      setSelectedDepartmentId(null);
+      setSelectedYear(null);
+      setSelectedSemester('');
       setSelectedDivisionId(null);
       return;
     }
@@ -219,6 +268,10 @@ export const TimetableManagementPage: React.FC = () => {
         const res = await divisionAPI.getByAcademicYear(selectedYearId);
         const divs = Array.isArray(res.data) ? res.data : [];
         setDivisions(divs);
+        // Reset downstream selections
+        setSelectedDepartmentId(null);
+        setSelectedYear(null);
+        setSelectedSemester('');
         setSelectedDivisionId(null);
         setDraftEntries([]);
       } catch {
@@ -227,6 +280,33 @@ export const TimetableManagementPage: React.FC = () => {
     };
     loadDivisions();
   }, [selectedYearId]);
+
+  // Reset downstream selections when department changes
+  useEffect(() => {
+    if (selectedDepartmentId !== null) {
+      setSelectedYear(null);
+      setSelectedDivisionId(null);
+      setSelectedSemester('');
+      setDraftEntries([]);
+    }
+  }, [selectedDepartmentId]);
+
+  // Reset downstream selections when year changes
+  useEffect(() => {
+    if (selectedYear !== null) {
+      setSelectedDivisionId(null);
+      setSelectedSemester('');
+      setDraftEntries([]);
+    }
+  }, [selectedYear]);
+
+  // Reset downstream selections when division changes
+  useEffect(() => {
+    if (selectedDivisionId !== null) {
+      setSelectedSemester('');
+      setDraftEntries([]);
+    }
+  }, [selectedDivisionId]);
 
   // Load batches when division changes
   useEffect(() => {
@@ -247,17 +327,17 @@ export const TimetableManagementPage: React.FC = () => {
 
   // ─── Fetch draft entries ────────────────────────────────────────────
   const fetchDraft = useCallback(async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     try {
       setIsActionLoading(true);
-      const res = await timetableAPI.getDraft(selectedDivisionId, selectedYearId);
+      const res = await timetableAPI.getDraft(selectedDivisionId, selectedYearId, selectedSemester);
       setDraftEntries(Array.isArray(res.data) ? res.data : []);
     } catch {
       setDraftEntries([]);
     } finally {
       setIsActionLoading(false);
     }
-  }, [selectedDivisionId, selectedYearId]);
+  }, [selectedDivisionId, selectedYearId, selectedSemester]);
 
   useEffect(() => {
     fetchDraft();
@@ -368,28 +448,6 @@ export const TimetableManagementPage: React.FC = () => {
     }
   };
 
-  // ─── Copy from another division ──────────────────────────────────
-  const [showCopyModal, setShowCopyModal] = useState(false);
-  const [copySourceId, setCopySourceId] = useState<string>('');
-
-  const handleCopyFromDivision = async () => {
-    if (!copySourceId || !selectedDivisionId || !selectedYearId) return;
-    if (!window.confirm('Copy all draft entries from the selected division? Existing entries in this division will NOT be removed.')) return;
-
-    try {
-      setIsActionLoading(true);
-      const res = await timetableAPI.copyFromDivision(Number(copySourceId), selectedDivisionId, selectedYearId);
-      toast.success(`Copied ${(res.data as any).entriesCopied} entries successfully`);
-      setShowCopyModal(false);
-      setCopySourceId('');
-      fetchDraft();
-    } catch (err: any) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
   // ─── Drag-and-Drop ──────────────────────────────────────────────
   const [activeDragEntry, setActiveDragEntry] = useState<any>(null);
   const sensors = useSensors(
@@ -495,19 +553,19 @@ export const TimetableManagementPage: React.FC = () => {
   };
 
   const handleExportPDF = async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     try {
-      const res = await timetableAPI.exportDivisionPDF(selectedDivisionId, selectedYearId);
-      triggerDownload(res.data, `timetable_division_${selectedDivisionId}.pdf`);
+      const res = await timetableAPI.exportDivisionPDF(selectedDivisionId, selectedYearId, selectedSemester);
+      triggerDownload(res.data, `timetable_division_${selectedDivisionId}_${selectedSemester}.pdf`);
       toast.success('PDF downloaded!');
     } catch { toast.error('Failed to export PDF'); }
   };
 
   const handleExportExcel = async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     try {
-      const res = await timetableAPI.exportDivisionExcel(selectedDivisionId, selectedYearId);
-      triggerDownload(res.data, `timetable_division_${selectedDivisionId}.xlsx`);
+      const res = await timetableAPI.exportDivisionExcel(selectedDivisionId, selectedYearId, selectedSemester);
+      triggerDownload(res.data, `timetable_division_${selectedDivisionId}_${selectedSemester}.xlsx`);
       toast.success('Excel downloaded!');
     } catch { toast.error('Failed to export Excel'); }
   };
@@ -517,7 +575,7 @@ export const TimetableManagementPage: React.FC = () => {
   const [validationResult, setValidationResult] = useState<any>(null);
 
   const handlePublish = async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     // First run validation
     try {
       setIsActionLoading(true);
@@ -532,10 +590,10 @@ export const TimetableManagementPage: React.FC = () => {
   };
 
   const confirmPublish = async (force: boolean = false) => {
-    if (!selectedDivisionId || !selectedYearId) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     try {
       setIsActionLoading(true);
-      const res = await timetableAPI.publish(selectedDivisionId, selectedYearId, force);
+      const res = await timetableAPI.publish(selectedDivisionId, selectedYearId, selectedSemester, force);
       if (res.status === 200) {
         toast.success(res.data.message || 'Timetable published!');
         setShowValidation(false);
@@ -555,11 +613,11 @@ export const TimetableManagementPage: React.FC = () => {
   };
 
   const handleArchive = async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
-    if (!window.confirm('Archive the currently published timetable for this division?')) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
+    if (!window.confirm(`Archive the currently published timetable for ${selectedSemester}?`)) return;
     try {
       setIsActionLoading(true);
-      const res = await timetableAPI.archive(selectedDivisionId, selectedYearId);
+      const res = await timetableAPI.archive(selectedDivisionId, selectedYearId, selectedSemester);
       toast.success(res.data.message || 'Timetable archived');
     } catch (err: any) {
       toast.error(getErrorMessage(err));
@@ -569,11 +627,11 @@ export const TimetableManagementPage: React.FC = () => {
   };
 
   const handleClearDraft = async () => {
-    if (!selectedDivisionId || !selectedYearId) return;
-    if (!window.confirm('Clear ALL draft entries for this division? This cannot be undone.')) return;
+    if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
+    if (!window.confirm(`Clear ALL draft entries for ${selectedSemester}? This cannot be undone.`)) return;
     try {
       setIsActionLoading(true);
-      const res = await timetableAPI.clearDraft(selectedDivisionId, selectedYearId);
+      const res = await timetableAPI.clearDraft(selectedDivisionId, selectedYearId, selectedSemester);
       toast.success(res.data.message || 'Draft cleared');
       fetchDraft();
     } catch (err: any) {
@@ -594,13 +652,10 @@ export const TimetableManagementPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-1">Timetable Builder</h1>
           <p className="text-gray-600">Create and manage division timetables</p>
         </div>
-        {selectedDivisionId && selectedYearId && (
+        {selectedDivisionId && selectedYearId && selectedSemester && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={fetchDraft} isLoading={isActionLoading}>
               <FiRefreshCw className="mr-1" /> Refresh
-            </Button>
-            <Button variant="outline" onClick={() => setShowCopyModal(true)}>
-              <FiBook className="mr-1" /> Copy From Division
             </Button>
             <Button variant="outline" onClick={handleClearDraft} className="text-red-600 border-red-300 hover:bg-red-50">
               <FiTrash2 className="mr-1" /> Clear Draft
@@ -614,9 +669,6 @@ export const TimetableManagementPage: React.FC = () => {
             <Button variant="outline" onClick={handleExportExcel}>
               <FiDownload className="mr-1" /> Excel
             </Button>
-            <Button variant="primary" onClick={() => setShowLabWizard(true)}>
-              <FiPlus className="mr-1" /> Lab Session
-            </Button>
             <Button variant="primary" onClick={handlePublish} isLoading={isActionLoading}>
               <FiSend className="mr-1" /> Publish
             </Button>
@@ -626,9 +678,12 @@ export const TimetableManagementPage: React.FC = () => {
 
       {/* Selectors */}
       <Card className="mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* 1. Academic Year */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Academic Year <span className="text-red-500">*</span>
+            </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={selectedYearId || ''}
@@ -637,55 +692,112 @@ export const TimetableManagementPage: React.FC = () => {
               <option value="">Select Academic Year</option>
               {academicYears.map((y: any) => (
                 <option key={y.id} value={y.id}>
-                  {y.name || y.yearRange} {y.isCurrent ? '(Current)' : ''}
+                  {y.yearName || `Academic Year ${y.id}`} {y.isCurrent ? '(Current)' : ''}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* 2. Branch (Department) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Branch <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              value={selectedDepartmentId || ''}
+              onChange={(e) => setSelectedDepartmentId(e.target.value ? Number(e.target.value) : null)}
+              disabled={!selectedYearId || availableBranches.length === 0}
+            >
+              <option value="">Select Branch</option>
+              {availableBranches.map((dept: any) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+            {selectedYearId && availableBranches.length === 0 && (
+              <p className="text-xs text-orange-600 mt-1">No branches configured</p>
+            )}
+          </div>
+
+          {/* 3. Year */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Year <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              value={selectedYear || ''}
+              onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
+              disabled={!selectedDepartmentId}
+            >
+              <option value="">Select Year</option>
+              {availableYears.map((year: number) => (
+                <option key={year} value={year}>
+                  {year === 1 ? 'First Year' :
+                   year === 2 ? 'Second Year' :
+                   year === 3 ? 'Third Year' :
+                   'Fourth Year'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 4. Division */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Division <span className="text-red-500">*</span>
+            </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={selectedDivisionId || ''}
               onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-              disabled={!selectedYearId}
+              disabled={!selectedYear || filteredDivisions.length === 0}
             >
               <option value="">Select Division</option>
-              {divisions.map((d: any) => (
+              {filteredDivisions.map((d: any) => (
                 <option key={d.id} value={d.id}>
-                  {d.name} — Year {d.year} {d.department?.name ? `(${d.department.name})` : ''}
+                  {d.name}
                 </option>
               ))}
             </select>
+            {selectedYear && !divisionsExistForYear && (
+              <p className="text-xs text-orange-600 mt-1">⚠️ No divisions configured for this year</p>
+            )}
           </div>
+
+          {/* 5. Semester */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Semester <span className="text-red-500">*</span>
+            </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={selectedSemester}
               onChange={(e) => setSelectedSemester(e.target.value)}
-              disabled={!selectedDivisionId}
+              disabled={!selectedDivisionId || availableSemesters.length === 0}
             >
-              <option value="">All Semesters</option>
-              <option value="SEM_1">Semester 1</option>
-              <option value="SEM_2">Semester 2</option>
-              <option value="SEM_3">Semester 3</option>
-              <option value="SEM_4">Semester 4</option>
-              <option value="SEM_5">Semester 5</option>
-              <option value="SEM_6">Semester 6</option>
-              <option value="SEM_7">Semester 7</option>
-              <option value="SEM_8">Semester 8</option>
+              <option value="">Select Semester</option>
+              {availableSemesters.map((sem) => (
+                <option key={sem.value} value={sem.value}>
+                  {sem.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
       </Card>
 
       {/* Grid or placeholder */}
-      {!selectedDivisionId || !selectedYearId ? (
+      {!selectedDivisionId || !selectedYearId || !selectedSemester ? (
         <Card>
           <div className="text-center py-16">
             <FiBook className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">Select an academic year and division to start building the timetable</p>
+            <p className="text-gray-500 text-lg mb-2">Select all filters to start building the timetable</p>
+            <p className="text-gray-400 text-sm">
+              Choose: Academic Year → Branch → Year → Division → Semester
+            </p>
           </div>
         </Card>
       ) : (
@@ -844,68 +956,6 @@ export const TimetableManagementPage: React.FC = () => {
         />
       )}
 
-      {/* Copy From Division Modal */}
-      {showCopyModal && (
-        <Modal isOpen={showCopyModal} onClose={() => { setShowCopyModal(false); setCopySourceId(''); }} title="Copy Timetable From Another Division">
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Copy all draft entries (excluding lab sessions) from a source division into the currently selected division.
-            </p>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Source Division</label>
-              <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                value={copySourceId}
-                onChange={(e) => setCopySourceId(e.target.value)}
-              >
-                <option value="">Select source division...</option>
-                {divisions
-                  .filter((d: any) => d.id !== selectedDivisionId)
-                  .map((d: any) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} — Year {d.year} {d.department?.name ? `(${d.department.name})` : ''}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-              <strong>Note:</strong> Lab session entries are NOT copied. You will need to set up lab sessions separately for this division.
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" onClick={() => { setShowCopyModal(false); setCopySourceId(''); }} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleCopyFromDivision}
-                isLoading={isActionLoading}
-                disabled={!copySourceId}
-                className="flex-1"
-              >
-                Copy Entries
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Lab Session Wizard Modal */}
-      {showLabWizard && selectedDivisionId && selectedYearId && (
-        <LabSessionWizard
-          isOpen={showLabWizard}
-          onClose={() => setShowLabWizard(false)}
-          divisionId={selectedDivisionId}
-          academicYearId={selectedYearId}
-          courses={courses.filter((c: any) => c.courseType === 'LAB')}
-          teachers={teachers}
-          rooms={rooms}
-          timeSlots={timeSlots}
-          batches={batches}
-          defaultSemester={selectedSemester}
-          onSaved={fetchDraft}
-        />
-      )}
-
       {/* Pre-Publish Validation Modal */}
       {showValidation && validationResult && (
         <Modal isOpen={showValidation} onClose={() => { setShowValidation(false); setValidationResult(null); }} title="Pre-Publish Validation">
@@ -973,336 +1023,6 @@ export const TimetableManagementPage: React.FC = () => {
         </Modal>
       )}
     </div>
-  );
-};
-
-// ─── Lab Session Wizard ──────────────────────────────────────────────
-
-interface LabWizardProps {
-  isOpen: boolean;
-  onClose: () => void;
-  divisionId: number;
-  academicYearId: number;
-  courses: any[];
-  teachers: any[];
-  rooms: any[];
-  timeSlots: any[];
-  batches: any[];
-  defaultSemester?: string;
-  onSaved: () => void;
-}
-
-const LabSessionWizard: React.FC<LabWizardProps> = ({
-  isOpen, onClose, divisionId, academicYearId,
-  courses, teachers, rooms, timeSlots, batches,
-  defaultSemester, onSaved,
-}) => {
-  const [isSaving, setIsSaving] = useState(false);
-  const [conflicts, setConflicts] = useState<string[]>([]);
-
-  const [courseId, setCourseId] = useState('');
-  const [dayOfWeek, setDayOfWeek] = useState('');
-  const [timeSlotId, setTimeSlotId] = useState('');
-  const [semester, setSemester] = useState(defaultSemester || '');
-  const [batchId, setBatchId] = useState('');
-  const [teacherId, setTeacherId] = useState('');
-  const [roomId, setRoomId] = useState('');
-
-  // Availability filtering state
-  const [availableRooms, setAvailableRooms] = useState<any[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
-  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
-
-  // Batch filtering for selected lab course
-  const [availableBatches, setAvailableBatches] = useState<any[]>([]);
-  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
-
-  // Available lab courses (with batch-level tracking)
-  const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
-
-  // Load available lab courses when modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    const loadAvailableCourses = async () => {
-      try {
-        setIsLoadingCourses(true);
-        const res = await courseAPI.getAvailableWithCredits(
-          divisionId,
-          academicYearId,
-          semester || undefined
-        );
-        const labCourses = (Array.isArray(res.data) ? res.data : []).filter((c: any) => c.courseType === 'LAB');
-        setAvailableCourses(labCourses);
-      } catch (err) {
-        console.error('Failed to load available courses:', err);
-        setAvailableCourses(courses);
-      } finally {
-        setIsLoadingCourses(false);
-      }
-    };
-
-    loadAvailableCourses();
-  }, [isOpen, divisionId, academicYearId, semester, courses]);
-
-  // Load available batches when course changes
-  useEffect(() => {
-    if (!courseId || !isOpen) {
-      setAvailableBatches(batches);
-      return;
-    }
-
-    const loadAvailableBatches = async () => {
-      try {
-        setIsLoadingBatches(true);
-        const res = await courseAPI.getAvailableBatchesForCourse(
-          Number(courseId),
-          divisionId,
-          academicYearId
-        );
-        setAvailableBatches(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error('Failed to load available batches:', err);
-        setAvailableBatches(batches);
-      } finally {
-        setIsLoadingBatches(false);
-      }
-    };
-
-    loadAvailableBatches();
-  }, [courseId, isOpen, divisionId, academicYearId, batches]);
-
-  // Load available rooms and teachers when day/slot changes
-  useEffect(() => {
-    if (!dayOfWeek || !timeSlotId) {
-      setAvailableRooms(rooms.filter((r: any) => r.roomType === 'LAB'));
-      setAvailableTeachers(teachers);
-      return;
-    }
-
-    const loadAvailability = async () => {
-      try {
-        setIsLoadingAvailability(true);
-        const [roomsRes, teachersRes] = await Promise.all([
-          timetableAPI.getAvailableRooms(dayOfWeek, Number(timeSlotId), academicYearId, divisionId),
-          timetableAPI.getAvailableTeachers(dayOfWeek, Number(timeSlotId), academicYearId),
-        ]);
-        const labRooms = (Array.isArray(roomsRes.data) ? roomsRes.data : []).filter((r: any) => r.roomType === 'LAB');
-        setAvailableRooms(labRooms);
-        setAvailableTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
-      } catch (err) {
-        console.error('Failed to load availability:', err);
-        setAvailableRooms(rooms.filter((r: any) => r.roomType === 'LAB'));
-        setAvailableTeachers(teachers);
-      } finally {
-        setIsLoadingAvailability(false);
-      }
-    };
-
-    loadAvailability();
-  }, [dayOfWeek, timeSlotId, academicYearId, divisionId, rooms, teachers]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!courseId || !dayOfWeek || !timeSlotId || !batchId || !teacherId || !roomId) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      setConflicts([]);
-
-      await timetableAPI.createLabSession({
-        divisionId,
-        academicYearId,
-        courseId: Number(courseId),
-        timeSlotId: Number(timeSlotId),
-        dayOfWeek,
-        semester: semester || undefined,
-        batchAssignments: [{
-          batchId: Number(batchId),
-          teacherId: Number(teacherId),
-          roomId: Number(roomId),
-        }],
-      });
-
-      toast.success('Lab session created successfully!');
-      onSaved();
-      onClose();
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        const data = err.response.data;
-        setConflicts(data?.conflicts || [data?.message || 'Conflict detected']);
-      } else {
-        toast.error(getErrorMessage(err));
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create Lab Session (Single Batch)">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-gray-600">
-          Lab sessions occupy 2 consecutive lecture periods. The system will auto-book the next period.
-          Schedule one batch at a time.
-        </p>
-
-        {/* Conflicts */}
-        {conflicts.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="font-semibold text-red-800 mb-1"><FiAlertTriangle className="inline mr-1" /> Conflicts</p>
-            {conflicts.map((c, i) => (
-              <p key={i} className="text-sm text-red-700">- {c}</p>
-            ))}
-          </div>
-        )}
-
-        {/* Course + Day + Slot */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lab Course <span className="text-red-500">*</span>
-              {isLoadingCourses && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
-            </label>
-            <select 
-              className="w-full border rounded-lg px-3 py-2 text-sm" 
-              value={courseId} 
-              onChange={e => { setCourseId(e.target.value); setConflicts([]); }}
-              disabled={isLoadingCourses}
-            >
-              <option value="">Select lab course...</option>
-              {availableCourses.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.displayName || c.name}</option>
-              ))}
-            </select>
-            {availableCourses.length === 0 && !isLoadingCourses && (
-              <p className="text-xs text-orange-600 mt-1">
-                All batches have been allocated lab courses.
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Day <span className="text-red-500">*</span>
-            </label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={dayOfWeek} onChange={e => { setDayOfWeek(e.target.value); setConflicts([]); }}>
-              <option value="">Select day...</option>
-              {DAYS.map(d => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Starting Period <span className="text-red-500">*</span>
-              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
-            </label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={timeSlotId} onChange={e => { setTimeSlotId(e.target.value); setConflicts([]); }}>
-              <option value="">Select period...</option>
-              {timeSlots.map((s: any) => (
-                <option key={s.id} value={s.id}>{s.slotName} ({s.startTime?.substring(0,5)})</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Semester */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
-          <select className="w-full border rounded-lg px-3 py-2 text-sm" value={semester} onChange={e => setSemester(e.target.value)}>
-            <option value="">Select semester...</option>
-            {['SEM_1','SEM_2','SEM_3','SEM_4','SEM_5','SEM_6','SEM_7','SEM_8'].map(s => (
-              <option key={s} value={s}>{s.replace('_', ' ')}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Batch Assignment */}
-        <div className="border-t pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Batch Assignment</label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">
-                Batch <span className="text-red-500">*</span>
-                {isLoadingBatches && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
-              </label>
-              <select
-                className="w-full border rounded px-3 py-2 text-sm"
-                value={batchId}
-                onChange={e => setBatchId(e.target.value)}
-                disabled={isLoadingBatches || !courseId}
-              >
-                <option value="">Select batch...</option>
-                {availableBatches.map((b: any) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              {courseId && availableBatches.length === 0 && !isLoadingBatches && (
-                <p className="text-xs text-orange-600 mt-1">
-                  All batches allocated for this course.
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">
-                Teacher <span className="text-red-500">*</span>
-              </label>
-              <select
-                className="w-full border rounded px-3 py-2 text-sm"
-                value={teacherId}
-                onChange={e => setTeacherId(e.target.value)}
-                disabled={isLoadingAvailability}
-              >
-                <option value="">Select teacher...</option>
-                {availableTeachers.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">
-                Lab Room <span className="text-red-500">*</span>
-              </label>
-              <select
-                className="w-full border rounded px-3 py-2 text-sm"
-                value={roomId}
-                onChange={e => setRoomId(e.target.value)}
-                disabled={isLoadingAvailability}
-              >
-                <option value="">Select lab room...</option>
-                {availableRooms.map((r: any) => (
-                  <option key={r.id} value={r.id}>{r.roomNumber} ({r.capacity})</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          {dayOfWeek && timeSlotId && !isLoadingAvailability && (
-            <>
-              {availableTeachers.length === 0 && (
-                <p className="text-xs text-orange-600 mt-2">
-                  ⚠️ No teachers available at this time.
-                </p>
-              )}
-              {availableRooms.length === 0 && (
-                <p className="text-xs text-orange-600 mt-2">
-                  ⚠️ No lab rooms available at this time.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={isSaving} className="flex-1">
-            Create Lab Session
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 };
 
@@ -1408,7 +1128,7 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
 
   // Phase 3: Load available rooms and teachers when day/slot changes
   useEffect(() => {
-    if (!form.dayOfWeek || !form.timeSlotId) {
+    if (!form.dayOfWeek || !form.timeSlotId || !form.semester) {
       setAvailableRooms(rooms);
       setAvailableTeachers(teachers);
       return;
@@ -1418,8 +1138,8 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
       try {
         setIsLoadingAvailability(true);
         const [roomsRes, teachersRes] = await Promise.all([
-          timetableAPI.getAvailableRooms(form.dayOfWeek, Number(form.timeSlotId), academicYearId, divisionId),
-          timetableAPI.getAvailableTeachers(form.dayOfWeek, Number(form.timeSlotId), academicYearId),
+          timetableAPI.getAvailableRooms(form.dayOfWeek, Number(form.timeSlotId), academicYearId, form.semester, divisionId),
+          timetableAPI.getAvailableTeachers(form.dayOfWeek, Number(form.timeSlotId), academicYearId, form.semester),
         ]);
         setAvailableRooms(Array.isArray(roomsRes.data) ? roomsRes.data : []);
         setAvailableTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
@@ -1434,7 +1154,7 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
     };
 
     loadAvailability();
-  }, [form.dayOfWeek, form.timeSlotId, academicYearId, divisionId, rooms, teachers]);
+  }, [form.dayOfWeek, form.timeSlotId, form.semester, academicYearId, divisionId, rooms, teachers]);
 
   // Load available batches when a lab course is selected
   useEffect(() => {
