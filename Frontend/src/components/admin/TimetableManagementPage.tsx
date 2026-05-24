@@ -50,7 +50,7 @@ const DraggableEntryCard: React.FC<{
       className={`group relative p-2 rounded-lg text-xs cursor-pointer transition-all ${
         isLab
           ? 'bg-purple-50 border border-purple-300 hover:bg-purple-100'
-          : 'bg-primary-50 border border-primary-300 hover:bg-primary-100'
+          : 'bg-blue-50 border border-blue-300 hover:bg-blue-100'
       } ${!hasLabGroup ? 'touch-none' : ''}`}
       onClick={() => onEdit(entry)}
       {...(hasLabGroup ? {} : { ...attributes, ...listeners })}
@@ -59,7 +59,7 @@ const DraggableEntryCard: React.FC<{
       {!hasLabGroup && (
         <FiMove size={10} className="absolute top-1 left-1 text-gray-300 group-hover:text-gray-500" />
       )}
-      <p className={`font-semibold truncate ${isLab ? 'text-purple-900' : 'text-primary-900'}`}>
+      <p className={`font-semibold truncate ${isLab ? 'text-purple-900' : 'text-blue-900'}`}>
         {entry.course?.name || 'Unknown'}
       </p>
       <div className="flex items-center gap-1 text-gray-600 mt-0.5">
@@ -98,8 +98,9 @@ const DraggableEntryCard: React.FC<{
 const DroppableCell: React.FC<{
   day: string;
   slotId: number;
+  rowSpan?: number;
   children: React.ReactNode;
-}> = ({ day, slotId, children }) => {
+}> = ({ day, slotId, rowSpan = 1, children }) => {
   const { isOver, setNodeRef } = useDroppable({
     id: `cell-${day}-${slotId}`,
     data: { day, slotId },
@@ -108,7 +109,8 @@ const DroppableCell: React.FC<{
   return (
     <td
       ref={setNodeRef}
-      className={`border border-gray-300 p-1 transition-all ${
+      rowSpan={rowSpan}
+      className={`border border-gray-300 p-1 transition-all ${rowSpan > 1 ? 'align-top' : ''} ${
         isOver ? 'ring-2 ring-primary-500 bg-primary-50' : ''
       }`}
     >
@@ -262,14 +264,71 @@ export const TimetableManagementPage: React.FC = () => {
   }, [fetchDraft]);
 
   // ─── Grid lookup ────────────────────────────────────────────────────
-  const getEntriesForCell = (day: string, slotId: number) =>
+  const getEntriesForCell = useCallback((day: string, slotId: number) =>
     draftEntries.filter((e: any) =>
       e.dayOfWeek === day &&
       e.timeSlot?.id === slotId &&
       (!selectedSemester || e.semester === selectedSemester || !e.semester)
-    );
+    ), [draftEntries, selectedSemester]);
 
   const formatTime = (t: string) => (t ? t.substring(0, 5) : '');
+
+  // ─── Cell Merging Helper ────────────────────────────────────────────
+  // Check if a lab entry should be merged with the next slot
+  const shouldMergeLabEntry = useCallback((entry: any, day: string, slotIdx: number): boolean => {
+    if (!entry.course || entry.course.courseType !== 'LAB') return false;
+    if (slotIdx + 1 >= filteredTimeSlots.length) return false;
+
+    const nextSlot = filteredTimeSlots[slotIdx + 1];
+    if (nextSlot.isBreak) return false;
+
+    const nextEntries = getEntriesForCell(day, nextSlot.id);
+    
+    // Find matching entry in next slot
+    // Match by: same course, same teacher, same room, same day
+    // If labSessionGroup exists, also match by that
+    const nextEntry = nextEntries.find((e: any) => {
+      if (!e.course || e.course.courseType !== 'LAB') return false;
+      if (e.course.id !== entry.course.id) return false;
+      if (e.teacher?.id !== entry.teacher?.id) return false;
+      if (e.room?.id !== entry.room?.id) return false;
+      if (e.dayOfWeek !== entry.dayOfWeek) return false;
+      
+      // If both have labSessionGroup, they must match
+      if (entry.labSessionGroup && e.labSessionGroup) {
+        return entry.labSessionGroup.id === e.labSessionGroup.id;
+      }
+      
+      // If both have batch, they must match
+      if (entry.batch && e.batch) {
+        return entry.batch.id === e.batch.id;
+      }
+      
+      // Otherwise, match by course/teacher/room is enough
+      return true;
+    });
+
+    return !!nextEntry;
+  }, [filteredTimeSlots, getEntriesForCell]);
+
+  // Track which cells should be skipped (because they're part of a merged cell)
+  const mergedCells = useMemo(() => {
+    const merged = new Set<string>();
+    filteredTimeSlots.forEach((slot: any, slotIdx: number) => {
+      if (slot.isBreak) return;
+      DAYS.forEach((day) => {
+        const entries = getEntriesForCell(day, slot.id);
+        entries.forEach((entry: any) => {
+          if (shouldMergeLabEntry(entry, day, slotIdx)) {
+            // Mark the next slot as merged
+            const nextSlot = filteredTimeSlots[slotIdx + 1];
+            merged.add(`${day}-${nextSlot.id}`);
+          }
+        });
+      });
+    });
+    return merged;
+  }, [filteredTimeSlots, getEntriesForCell, shouldMergeLabEntry]);
 
   // ─── Add / Edit entry ──────────────────────────────────────────────
   const openAddModal = (day?: string, slotId?: number) => {
@@ -662,7 +721,7 @@ export const TimetableManagementPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTimeSlots.map((slot: any) => {
+                    {filteredTimeSlots.map((slot: any, slotIdx: number) => {
                       // ── Break row: grey banner ──
                       if (slot.isBreak) {
                         return (
@@ -695,10 +754,22 @@ export const TimetableManagementPage: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        {DAYS.map((day) => {
+{DAYS.map((day) => {
+                          const cellKey = `${day}-${slot.id}`;
+                          
+                          // Skip this cell if it's part of a merged cell from previous row
+                          if (mergedCells.has(cellKey)) {
+                            return null; // Cell is handled by rowSpan from previous row
+                          }
+
                           const cellEntries = getEntriesForCell(day, slot.id);
+                          
+                          // Check if any entry in this cell should merge with next slot
+                          const mergeEntry = cellEntries.find((e: any) => shouldMergeLabEntry(e, day, slotIdx));
+                          const shouldSpan = !!mergeEntry;
+
                           return (
-                            <DroppableCell key={`${day}-${slot.id}`} day={day} slotId={slot.id}>
+                            <DroppableCell key={cellKey} day={day} slotId={slot.id} rowSpan={shouldSpan ? 2 : 1}>
                               {cellEntries.length > 0 ? (
                                 <div className="space-y-1">
                                   {cellEntries.map((entry: any) => (
@@ -728,7 +799,7 @@ export const TimetableManagementPage: React.FC = () => {
                               )}
                             </DroppableCell>
                           );
-                        })}
+                        }).filter(Boolean)}
                       </tr>
                       );
                     })}
@@ -933,41 +1004,110 @@ const LabSessionWizard: React.FC<LabWizardProps> = ({
   const [dayOfWeek, setDayOfWeek] = useState('');
   const [timeSlotId, setTimeSlotId] = useState('');
   const [semester, setSemester] = useState(defaultSemester || '');
+  const [batchId, setBatchId] = useState('');
+  const [teacherId, setTeacherId] = useState('');
+  const [roomId, setRoomId] = useState('');
 
-  // Each batch gets a teacher + room assignment
-  const [batchAssignments, setBatchAssignments] = useState<
-    { batchId: string; teacherId: string; roomId: string }[]
-  >([]);
+  // Availability filtering state
+  const [availableRooms, setAvailableRooms] = useState<any[]>([]);
+  const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
 
-  // Initialize batch assignments when batches change
-  React.useEffect(() => {
-    if (batches.length > 0 && batchAssignments.length === 0) {
-      setBatchAssignments(
-        batches.map((b: any) => ({ batchId: b.id.toString(), teacherId: '', roomId: '' }))
-      );
+  // Batch filtering for selected lab course
+  const [availableBatches, setAvailableBatches] = useState<any[]>([]);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
+
+  // Available lab courses (with batch-level tracking)
+  const [availableCourses, setAvailableCourses] = useState<any[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+
+  // Load available lab courses when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const loadAvailableCourses = async () => {
+      try {
+        setIsLoadingCourses(true);
+        const res = await courseAPI.getAvailableWithCredits(
+          divisionId,
+          academicYearId,
+          semester || undefined
+        );
+        const labCourses = (Array.isArray(res.data) ? res.data : []).filter((c: any) => c.courseType === 'LAB');
+        setAvailableCourses(labCourses);
+      } catch (err) {
+        console.error('Failed to load available courses:', err);
+        setAvailableCourses(courses);
+      } finally {
+        setIsLoadingCourses(false);
+      }
+    };
+
+    loadAvailableCourses();
+  }, [isOpen, divisionId, academicYearId, semester, courses]);
+
+  // Load available batches when course changes
+  useEffect(() => {
+    if (!courseId || !isOpen) {
+      setAvailableBatches(batches);
+      return;
     }
-  }, [batches]);
 
-  const updateAssignment = (index: number, field: string, value: string) => {
-    setBatchAssignments(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-    setConflicts([]);
-  };
+    const loadAvailableBatches = async () => {
+      try {
+        setIsLoadingBatches(true);
+        const res = await courseAPI.getAvailableBatchesForCourse(
+          Number(courseId),
+          divisionId,
+          academicYearId
+        );
+        setAvailableBatches(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        console.error('Failed to load available batches:', err);
+        setAvailableBatches(batches);
+      } finally {
+        setIsLoadingBatches(false);
+      }
+    };
+
+    loadAvailableBatches();
+  }, [courseId, isOpen, divisionId, academicYearId, batches]);
+
+  // Load available rooms and teachers when day/slot changes
+  useEffect(() => {
+    if (!dayOfWeek || !timeSlotId) {
+      setAvailableRooms(rooms.filter((r: any) => r.roomType === 'LAB'));
+      setAvailableTeachers(teachers);
+      return;
+    }
+
+    const loadAvailability = async () => {
+      try {
+        setIsLoadingAvailability(true);
+        const [roomsRes, teachersRes] = await Promise.all([
+          timetableAPI.getAvailableRooms(dayOfWeek, Number(timeSlotId), academicYearId, divisionId),
+          timetableAPI.getAvailableTeachers(dayOfWeek, Number(timeSlotId), academicYearId),
+        ]);
+        const labRooms = (Array.isArray(roomsRes.data) ? roomsRes.data : []).filter((r: any) => r.roomType === 'LAB');
+        setAvailableRooms(labRooms);
+        setAvailableTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
+      } catch (err) {
+        console.error('Failed to load availability:', err);
+        setAvailableRooms(rooms.filter((r: any) => r.roomType === 'LAB'));
+        setAvailableTeachers(teachers);
+      } finally {
+        setIsLoadingAvailability(false);
+      }
+    };
+
+    loadAvailability();
+  }, [dayOfWeek, timeSlotId, academicYearId, divisionId, rooms, teachers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!courseId || !dayOfWeek || !timeSlotId) {
-      toast.error('Please fill in course, day, and time slot');
-      return;
-    }
-
-    const filledAssignments = batchAssignments.filter(ba => ba.teacherId && ba.roomId);
-    if (filledAssignments.length === 0) {
-      toast.error('Please assign at least one batch with a teacher and room');
+    if (!courseId || !dayOfWeek || !timeSlotId || !batchId || !teacherId || !roomId) {
+      toast.error('Please fill in all required fields');
       return;
     }
 
@@ -982,11 +1122,11 @@ const LabSessionWizard: React.FC<LabWizardProps> = ({
         timeSlotId: Number(timeSlotId),
         dayOfWeek,
         semester: semester || undefined,
-        batchAssignments: filledAssignments.map(ba => ({
-          batchId: Number(ba.batchId),
-          teacherId: Number(ba.teacherId),
-          roomId: Number(ba.roomId),
-        })),
+        batchAssignments: [{
+          batchId: Number(batchId),
+          teacherId: Number(teacherId),
+          roomId: Number(roomId),
+        }],
       });
 
       toast.success('Lab session created successfully!');
@@ -1004,15 +1144,12 @@ const LabSessionWizard: React.FC<LabWizardProps> = ({
     }
   };
 
-  // Filter rooms to LAB type only
-  const labRooms = rooms.filter((r: any) => r.roomType === 'LAB');
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create Lab Session">
+    <Modal isOpen={isOpen} onClose={onClose} title="Create Lab Session (Single Batch)">
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-gray-600">
           Lab sessions occupy 2 consecutive lecture periods. The system will auto-book the next period.
-          Each batch runs in parallel with a different teacher and room.
+          Schedule one batch at a time.
         </p>
 
         {/* Conflicts */}
@@ -1028,23 +1165,41 @@ const LabSessionWizard: React.FC<LabWizardProps> = ({
         {/* Course + Day + Slot */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lab Course</label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={courseId} onChange={e => { setCourseId(e.target.value); setConflicts([]); }}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Lab Course <span className="text-red-500">*</span>
+              {isLoadingCourses && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
+            </label>
+            <select 
+              className="w-full border rounded-lg px-3 py-2 text-sm" 
+              value={courseId} 
+              onChange={e => { setCourseId(e.target.value); setConflicts([]); }}
+              disabled={isLoadingCourses}
+            >
               <option value="">Select lab course...</option>
-              {courses.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+              {availableCourses.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.displayName || c.name}</option>
               ))}
             </select>
+            {availableCourses.length === 0 && !isLoadingCourses && (
+              <p className="text-xs text-orange-600 mt-1">
+                All batches have been allocated lab courses.
+              </p>
+            )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Day <span className="text-red-500">*</span>
+            </label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={dayOfWeek} onChange={e => { setDayOfWeek(e.target.value); setConflicts([]); }}>
               <option value="">Select day...</option>
               {DAYS.map(d => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Starting Period</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Starting Period <span className="text-red-500">*</span>
+              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
+            </label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={timeSlotId} onChange={e => { setTimeSlotId(e.target.value); setConflicts([]); }}>
               <option value="">Select period...</option>
               {timeSlots.map((s: any) => (
@@ -1065,52 +1220,84 @@ const LabSessionWizard: React.FC<LabWizardProps> = ({
           </select>
         </div>
 
-        {/* Batch Assignments */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Batch Assignments</label>
-          {batches.length === 0 ? (
-            <p className="text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
-              No batches found for this division. Create batches first in Academic Structure.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {batchAssignments.map((ba, i) => {
-                const batch = batches.find((b: any) => b.id.toString() === ba.batchId);
-                return (
-                  <div key={ba.batchId} className="grid grid-cols-3 gap-2 items-center bg-gray-50 p-2 rounded-lg">
-                    <div className="text-sm font-medium text-gray-700">
-                      {batch?.name || `Batch ${i + 1}`}
-                    </div>
-                    <select
-                      className="border rounded px-2 py-1.5 text-sm"
-                      value={ba.teacherId}
-                      onChange={e => updateAssignment(i, 'teacherId', e.target.value)}
-                    >
-                      <option value="">Select teacher...</option>
-                      {teachers.map((t: any) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                    <select
-                      className="border rounded px-2 py-1.5 text-sm"
-                      value={ba.roomId}
-                      onChange={e => updateAssignment(i, 'roomId', e.target.value)}
-                    >
-                      <option value="">Select lab room...</option>
-                      {labRooms.map((r: any) => (
-                        <option key={r.id} value={r.id}>{r.name} ({r.capacity})</option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })}
+        {/* Batch Assignment */}
+        <div className="border-t pt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Batch Assignment</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">
+                Batch <span className="text-red-500">*</span>
+                {isLoadingBatches && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
+              </label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={batchId}
+                onChange={e => setBatchId(e.target.value)}
+                disabled={isLoadingBatches || !courseId}
+              >
+                <option value="">Select batch...</option>
+                {availableBatches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              {courseId && availableBatches.length === 0 && !isLoadingBatches && (
+                <p className="text-xs text-orange-600 mt-1">
+                  All batches allocated for this course.
+                </p>
+              )}
             </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">
+                Teacher <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={teacherId}
+                onChange={e => setTeacherId(e.target.value)}
+                disabled={isLoadingAvailability}
+              >
+                <option value="">Select teacher...</option>
+                {availableTeachers.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">
+                Lab Room <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={roomId}
+                onChange={e => setRoomId(e.target.value)}
+                disabled={isLoadingAvailability}
+              >
+                <option value="">Select lab room...</option>
+                {availableRooms.map((r: any) => (
+                  <option key={r.id} value={r.id}>{r.roomNumber} ({r.capacity})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {dayOfWeek && timeSlotId && !isLoadingAvailability && (
+            <>
+              {availableTeachers.length === 0 && (
+                <p className="text-xs text-orange-600 mt-2">
+                  ⚠️ No teachers available at this time.
+                </p>
+              )}
+              {availableRooms.length === 0 && (
+                <p className="text-xs text-orange-600 mt-2">
+                  ⚠️ No lab rooms available at this time.
+                </p>
+              )}
+            </>
           )}
         </div>
 
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={isSaving} className="flex-1" disabled={batches.length === 0}>
+          <Button type="submit" variant="primary" isLoading={isSaving} className="flex-1">
             Create Lab Session
           </Button>
         </div>
@@ -1156,6 +1343,19 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
     notes: '',
   });
 
+  // Phase 3: Availability filtering state
+  const [availableRooms, setAvailableRooms] = useState<any[]>([]);
+  const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+
+  // Phase 4: Credit-based course selection state
+  const [availableCourses, setAvailableCourses] = useState<any[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+
+  // Batch filtering for lab courses
+  const [availableBatches, setAvailableBatches] = useState<any[]>([]);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
+
   useEffect(() => {
     if (editingEntry) {
       setForm({
@@ -1182,6 +1382,107 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
     }
   }, [editingEntry, prefillDay, prefillSlotId, defaultSemester]);
 
+  // Phase 4: Load available courses with credit instances when semester changes
+  useEffect(() => {
+    if (!isOpen || editingEntry) return; // Only for new entries
+    
+    const loadAvailableCourses = async () => {
+      try {
+        setIsLoadingCourses(true);
+        const res = await courseAPI.getAvailableWithCredits(
+          divisionId,
+          academicYearId,
+          form.semester || undefined
+        );
+        setAvailableCourses(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        console.error('Failed to load available courses:', err);
+        setAvailableCourses(courses); // Fallback to all courses
+      } finally {
+        setIsLoadingCourses(false);
+      }
+    };
+
+    loadAvailableCourses();
+  }, [isOpen, divisionId, academicYearId, form.semester, editingEntry, courses]);
+
+  // Phase 3: Load available rooms and teachers when day/slot changes
+  useEffect(() => {
+    if (!form.dayOfWeek || !form.timeSlotId) {
+      setAvailableRooms(rooms);
+      setAvailableTeachers(teachers);
+      return;
+    }
+
+    const loadAvailability = async () => {
+      try {
+        setIsLoadingAvailability(true);
+        const [roomsRes, teachersRes] = await Promise.all([
+          timetableAPI.getAvailableRooms(form.dayOfWeek, Number(form.timeSlotId), academicYearId, divisionId),
+          timetableAPI.getAvailableTeachers(form.dayOfWeek, Number(form.timeSlotId), academicYearId),
+        ]);
+        setAvailableRooms(Array.isArray(roomsRes.data) ? roomsRes.data : []);
+        setAvailableTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
+      } catch (err) {
+        console.error('Failed to load availability:', err);
+        // Fallback to showing all
+        setAvailableRooms(rooms);
+        setAvailableTeachers(teachers);
+      } finally {
+        setIsLoadingAvailability(false);
+      }
+    };
+
+    loadAvailability();
+  }, [form.dayOfWeek, form.timeSlotId, academicYearId, divisionId, rooms, teachers]);
+
+  // Load available batches when a lab course is selected
+  useEffect(() => {
+    if (!form.courseId || !isOpen) {
+      setAvailableBatches(batches);
+      return;
+    }
+
+    const selectedCourse = editingEntry 
+      ? courses.find((c: any) => c.id === Number(form.courseId))
+      : availableCourses.find((c: any) => c.id === Number(form.courseId));
+
+    // Only filter batches for lab courses
+    if (selectedCourse?.courseType !== 'LAB') {
+      setAvailableBatches(batches);
+      return;
+    }
+
+    const loadAvailableBatches = async () => {
+      try {
+        setIsLoadingBatches(true);
+        const res = await courseAPI.getAvailableBatchesForCourse(
+          Number(form.courseId),
+          divisionId,
+          academicYearId
+        );
+        let filteredBatches = Array.isArray(res.data) ? res.data : [];
+        
+        // If editing, include the current batch even if it's allocated
+        if (editingEntry && editingEntry.batch?.id) {
+          const currentBatch = batches.find((b: any) => b.id === editingEntry.batch.id);
+          if (currentBatch && !filteredBatches.find((b: any) => b.id === currentBatch.id)) {
+            filteredBatches = [currentBatch, ...filteredBatches];
+          }
+        }
+        
+        setAvailableBatches(filteredBatches);
+      } catch (err) {
+        console.error('Failed to load available batches:', err);
+        setAvailableBatches(batches);
+      } finally {
+        setIsLoadingBatches(false);
+      }
+    };
+
+    loadAvailableBatches();
+  }, [form.courseId, isOpen, divisionId, academicYearId, batches, editingEntry, courses, availableCourses]);
+
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setConflicts([]);
@@ -1192,6 +1493,12 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
 
     if (!form.courseId || !form.teacherId || !form.roomId || !form.timeSlotId || !form.dayOfWeek) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    // Validate batch is selected for lab courses
+    if (isLabCourse && !form.batchId) {
+      toast.error('Please select a batch for lab courses');
       return;
     }
 
@@ -1239,8 +1546,13 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
     }
   };
 
-  const selectedCourse = courses.find((c: any) => c.id === Number(form.courseId));
+  const selectedCourse = editingEntry 
+    ? courses.find((c: any) => c.id === Number(form.courseId))
+    : availableCourses.find((c: any) => c.id === Number(form.courseId));
   const isLabCourse = selectedCourse?.courseType === 'LAB';
+
+  // Display courses list - use credit-based for new entries, all courses for editing
+  const displayCourses = editingEntry ? courses : availableCourses;
 
   return (
     <Modal
@@ -1304,82 +1616,129 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
             </select>
           </div>
 
-          {/* Course */}
+          {/* Course - Phase 4: Credit-based selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Course <span className="text-red-500">*</span>
+              {isLoadingCourses && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
             </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={form.courseId}
               onChange={(e) => handleChange('courseId', e.target.value)}
               required
+              disabled={isLoadingCourses}
             >
               <option value="">Select Course</option>
-              {courses.map((c: any) => (
+              {displayCourses.map((c: any) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {c.courseType === 'LAB' ? '(Lab)' : ''} {c.code ? `[${c.code}]` : ''}
+                  {c.displayName || c.name} {c.courseType === 'LAB' ? '(Lab)' : ''} {c.code ? `[${c.code}]` : ''}
                 </option>
               ))}
             </select>
+            {!editingEntry && displayCourses.length === 0 && !isLoadingCourses && (
+              <p className="text-xs text-orange-600 mt-1">
+                All course credits have been allocated. Delete an entry to free up a credit slot.
+              </p>
+            )}
           </div>
 
-          {/* Teacher */}
+          {/* Teacher - Phase 3: Availability filtering */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Teacher <span className="text-red-500">*</span>
+              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
             </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={form.teacherId}
               onChange={(e) => handleChange('teacherId', e.target.value)}
               required
+              disabled={isLoadingAvailability}
             >
               <option value="">Select Teacher</option>
-              {teachers.map((t: any) => (
+              {availableTeachers.map((t: any) => (
                 <option key={t.id} value={t.id}>
                   {t.name} {t.department?.name ? `(${t.department.name})` : ''}
                 </option>
               ))}
             </select>
+            {form.dayOfWeek && form.timeSlotId && availableTeachers.length === 0 && !isLoadingAvailability && (
+              <p className="text-xs text-orange-600 mt-1">
+                No teachers available at this time. All teachers are occupied.
+              </p>
+            )}
           </div>
 
-          {/* Room */}
+          {/* Room - Phase 3: Availability filtering */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Room <span className="text-red-500">*</span>
+              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
             </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={form.roomId}
               onChange={(e) => handleChange('roomId', e.target.value)}
               required
+              disabled={isLoadingAvailability}
             >
               <option value="">Select Room</option>
-              {rooms.map((r: any) => (
+              {availableRooms.map((r: any) => (
                 <option key={r.id} value={r.id}>
                   {r.roomNumber} {r.name ? `- ${r.name}` : ''} ({r.roomType || 'classroom'}, cap: {r.capacity || '?'})
                 </option>
               ))}
             </select>
+            {form.dayOfWeek && form.timeSlotId && availableRooms.length === 0 && !isLoadingAvailability && (
+              <p className="text-xs text-orange-600 mt-1">
+                No rooms available at this time. All rooms are occupied.
+              </p>
+            )}
           </div>
 
-          {/* Batch (optional, mainly for labs) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Batch {isLabCourse && <span className="text-orange-500">(Lab)</span>}
-            </label>
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              value={form.batchId}
-              onChange={(e) => handleChange('batchId', e.target.value)}
-            >
-              <option value="">No batch (full division)</option>
-              {batches.map((b: any) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Batch - Hidden for theory, required for lab */}
+          {isLabCourse ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Batch <span className="text-red-500">*</span>
+                {isLoadingBatches && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
+              </label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                value={form.batchId}
+                onChange={(e) => handleChange('batchId', e.target.value)}
+                required
+                disabled={isLoadingBatches}
+              >
+                <option value="">Select batch...</option>
+                {availableBatches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              {availableBatches.length === 0 && !isLoadingBatches && (
+                <p className="text-xs text-orange-600 mt-1">
+                  All batches have been allocated this lab course.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Batch
+              </label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed"
+                value=""
+                disabled
+              >
+                <option value="">Full Division</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Theory courses are scheduled for the full division
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Notes */}

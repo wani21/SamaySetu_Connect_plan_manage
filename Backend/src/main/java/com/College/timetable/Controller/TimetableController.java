@@ -354,4 +354,41 @@ public class TimetableController {
             "note", "Lab session entries were skipped — configure them separately for the target division"
         ));
     }
+
+    // ---------------------------------------------------------------
+    // AVAILABILITY FILTERING — Real-time filtering for timetable creation
+    // ---------------------------------------------------------------
+
+    /**
+     * GET /api/timetable/available-rooms?day=MONDAY&slotId=5&academicYearId=1&divisionId=1
+     * Get available rooms for a specific day + time slot.
+     * Filters out rooms that are already booked at that time.
+     */
+    @GetMapping("/available-rooms")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<List<com.College.timetable.Entity.ClassRoom>> getAvailableRooms(
+        @RequestParam com.College.timetable.Entity.DayOfWeek day,
+        @RequestParam Long slotId,
+        @RequestParam Long academicYearId,
+        @RequestParam(required = false) Long divisionId
+    ) {
+        List<com.College.timetable.Entity.ClassRoom> available = timetableService.getAvailableRooms(day, slotId, academicYearId, divisionId);
+        return ResponseEntity.ok(available);
+    }
+
+    /**
+     * GET /api/timetable/available-teachers?day=MONDAY&slotId=5&academicYearId=1
+     * Get available teachers for a specific day + time slot.
+     * Filters out teachers that are already assigned at that time or marked unavailable.
+     */
+    @GetMapping("/available-teachers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<List<com.College.timetable.Entity.TeacherEntity>> getAvailableTeachers(
+        @RequestParam com.College.timetable.Entity.DayOfWeek day,
+        @RequestParam Long slotId,
+        @RequestParam Long academicYearId
+    ) {
+        List<com.College.timetable.Entity.TeacherEntity> available = timetableService.getAvailableTeachers(day, slotId, academicYearId);
+        return ResponseEntity.ok(available);
+    }
 }

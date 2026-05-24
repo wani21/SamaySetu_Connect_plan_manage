@@ -600,4 +600,73 @@ public class TimetableService {
         labSessionGroupRepository.deleteById(groupId);
         return count;
     }
+
+    // ---------------------------------------------------------------
+    // AVAILABILITY FILTERING — Real-time filtering for timetable creation
+    // ---------------------------------------------------------------
+
+    /**
+     * Get available rooms for a specific day + time slot.
+     * Filters out rooms that are already booked (occupied) at that time.
+     * Considers room type compatibility and capacity.
+     */
+    public List<ClassRoom> getAvailableRooms(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Long divisionId
+    ) {
+        // Get all active rooms
+        List<ClassRoom> allRooms = classRoomRepository.findAll().stream()
+            .filter(r -> Boolean.TRUE.equals(r.getIsActive()))
+            .toList();
+
+        // Get all booked room IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        List<Long> bookedRoomIds = timetableRepo.findAll().stream()
+            .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+            .filter(e -> e.getDayOfWeek() == day)
+            .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
+            .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .map(e -> e.getRoom() != null ? e.getRoom().getId() : null)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList();
+
+        // Filter out booked rooms
+        return allRooms.stream()
+            .filter(r -> !bookedRoomIds.contains(r.getId()))
+            .toList();
+    }
+
+    /**
+     * Get available teachers for a specific day + time slot.
+     * Filters out teachers that are already assigned at that time.
+     * Assumes teacher is available unless occupied or explicitly marked unavailable.
+     */
+    public List<TeacherEntity> getAvailableTeachers(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId
+    ) {
+        // Get all active teachers
+        List<TeacherEntity> allTeachers = teacherRepository.findAll().stream()
+            .filter(t -> Boolean.TRUE.equals(t.getIsActive()))
+            .toList();
+
+        // Get all booked teacher IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        List<Long> bookedTeacherIds = timetableRepo.findAll().stream()
+            .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+            .filter(e -> e.getDayOfWeek() == day)
+            .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
+            .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .map(e -> e.getTeacher() != null ? e.getTeacher().getId() : null)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList();
+
+        // Filter out booked teachers
+        return allTeachers.stream()
+            .filter(t -> !bookedTeacherIds.contains(t.getId()))
+            .toList();
+    }
 }

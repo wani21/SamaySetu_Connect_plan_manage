@@ -78,6 +78,9 @@ public class TimetableExportService {
 
     private byte[] buildPDF(List<TimetableEntry> entries, List<TimeSlot> slots, String title) throws Exception {
         Map<String, TimetableEntry> lookup = buildLookup(entries);
+        
+        // Track which cells have been merged (to skip rendering duplicate content)
+        java.util.Set<String> mergedCells = new java.util.HashSet<>();
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4.rotate(), 20, 20, 30, 20);
@@ -111,7 +114,9 @@ public class TimetableExportService {
         }
 
         // Data rows
-        for (TimeSlot slot : slots) {
+        for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
+            TimeSlot slot = slots.get(slotIdx);
+            
             if (Boolean.TRUE.equals(slot.getIsBreak())) {
                 // Break row — grey merged
                 PdfPCell timeCell = new PdfPCell(new Phrase(formatTime(slot) + "\n" + slot.getSlotName(), breakFont));
@@ -137,8 +142,20 @@ public class TimetableExportService {
             table.addCell(timeCell);
 
             // Day cells
-            for (String day : DAY_NAMES) {
+            for (int d = 0; d < DAY_NAMES.length; d++) {
+                String day = DAY_NAMES[d];
                 String key = day + ":" + slot.getId();
+                String cellKey = day + ":" + slotIdx;
+                
+                // Skip if this cell was already merged
+                if (mergedCells.contains(cellKey)) {
+                    PdfPCell cell = new PdfPCell();
+                    cell.setPadding(3);
+                    cell.setMinimumHeight(35);
+                    table.addCell(cell);
+                    continue;
+                }
+                
                 TimetableEntry entry = lookup.get(key);
 
                 PdfPCell cell = new PdfPCell();
@@ -150,12 +167,56 @@ public class TimetableExportService {
                     String teacherName = entry.getTeacher() != null ? entry.getTeacher().getName() : "-";
                     String roomNum = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
+                    String batchInfo = isLab && entry.getBatch() != null ? " (" + entry.getBatch().getName() + ")" : "";
 
-                    cell.addElement(new Phrase(courseName, cellBold));
-                    cell.addElement(new Phrase(teacherName, cellFont));
-                    cell.addElement(new Phrase(roomNum + (isLab && entry.getBatch() != null ? " (" + entry.getBatch().getName() + ")" : ""), cellFont));
+                    // Check if this is a lab entry with consecutive slot
+                    boolean shouldMerge = false;
+                    if (isLab && slotIdx + 1 < slots.size()) {
+                        TimeSlot nextSlot = slots.get(slotIdx + 1);
+                        if (!Boolean.TRUE.equals(nextSlot.getIsBreak())) {
+                            String nextKey = day + ":" + nextSlot.getId();
+                            TimetableEntry nextEntry = lookup.get(nextKey);
+                            
+                            // Check if next entry is same lab session
+                            // Match by: same course, teacher, room, day
+                            if (nextEntry != null && 
+                                nextEntry.getCourse() != null && 
+                                nextEntry.getCourse().getCourseType() == CourseType.LAB &&
+                                entry.getCourse().getId().equals(nextEntry.getCourse().getId()) &&
+                                entry.getTeacher().getId().equals(nextEntry.getTeacher().getId()) &&
+                                entry.getRoom().getId().equals(nextEntry.getRoom().getId()) &&
+                                entry.getDayOfWeek() == nextEntry.getDayOfWeek()) {
+                                
+                                // If both have labSessionGroup, they must match
+                                if (entry.getLabSessionGroup() != null && nextEntry.getLabSessionGroup() != null) {
+                                    shouldMerge = entry.getLabSessionGroup().getId().equals(nextEntry.getLabSessionGroup().getId());
+                                } else if (entry.getBatch() != null && nextEntry.getBatch() != null) {
+                                    // If both have batch, they must match
+                                    shouldMerge = entry.getBatch().getId().equals(nextEntry.getBatch().getId());
+                                } else {
+                                    // Otherwise, match by course/teacher/room is enough
+                                    shouldMerge = true;
+                                }
+                            }
+                        }
+                    }
 
-                    cell.setBackgroundColor(isLab ? new Color(243, 232, 255) : new Color(232, 240, 254));
+                    if (shouldMerge) {
+                        // For PDF, use rowspan to merge cells vertically
+                        cell.setRowspan(2);
+                        cell.addElement(new Phrase(courseName, cellBold));
+                        cell.addElement(new Phrase(teacherName, cellFont));
+                        cell.addElement(new Phrase(roomNum + batchInfo, cellFont));
+                        cell.setBackgroundColor(new Color(243, 232, 255));
+                        // Mark next cell as merged
+                        mergedCells.add(day + ":" + (slotIdx + 1));
+                    } else {
+                        cell.addElement(new Phrase(courseName, cellBold));
+                        cell.addElement(new Phrase(teacherName, cellFont));
+                        cell.addElement(new Phrase(roomNum + batchInfo, cellFont));
+                        // Apply consistent color: lab=purple, theory=blue
+                        cell.setBackgroundColor(isLab ? new Color(243, 232, 255) : new Color(232, 240, 254));
+                    }
                 } else {
                     cell.addElement(new Phrase("-", breakFont));
                 }
@@ -204,6 +265,9 @@ public class TimetableExportService {
 
     private byte[] buildExcel(List<TimetableEntry> entries, List<TimeSlot> slots, String sheetName, String title) throws Exception {
         Map<String, TimetableEntry> lookup = buildLookup(entries);
+        
+        // Track which cells have been merged (to skip rendering duplicate content)
+        java.util.Set<String> mergedCells = new java.util.HashSet<>();
 
         XSSFWorkbook wb = new XSSFWorkbook();
         XSSFSheet sheet = wb.createSheet(sheetName.length() > 31 ? sheetName.substring(0, 31) : sheetName);
@@ -235,9 +299,16 @@ public class TimetableExportService {
         breakFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
         breakStyle.setFont(breakFont);
 
+        // Theory style - consistent blue color
+        XSSFCellStyle theoryStyle = wb.createCellStyle();
+        theoryStyle.cloneStyleFrom(cellStyle);
+        theoryStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 232, (byte) 240, (byte) 254}, null)); // Light blue
+        theoryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        // Lab style - consistent purple color
         XSSFCellStyle labStyle = wb.createCellStyle();
         labStyle.cloneStyleFrom(cellStyle);
-        labStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 243, (byte) 232, (byte) 255}, null));
+        labStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 243, (byte) 232, (byte) 255}, null)); // Light purple
         labStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
         XSSFCellStyle titleStyle = wb.createCellStyle();
@@ -271,7 +342,8 @@ public class TimetableExportService {
         }
 
         // Data rows
-        for (TimeSlot slot : slots) {
+        for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
+            TimeSlot slot = slots.get(slotIdx);
             Row row = sheet.createRow(rowIdx++);
 
             if (Boolean.TRUE.equals(slot.getIsBreak())) {
@@ -298,6 +370,15 @@ public class TimetableExportService {
             // Day cells
             for (int d = 0; d < DAY_NAMES.length; d++) {
                 String key = DAY_NAMES[d] + ":" + slot.getId();
+                String cellKey = DAY_NAMES[d] + ":" + slotIdx;
+                
+                // Skip if this cell was already merged
+                if (mergedCells.contains(cellKey)) {
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
+                    cell.setCellStyle(cellStyle);
+                    continue;
+                }
+                
                 TimetableEntry entry = lookup.get(key);
                 org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
 
@@ -308,8 +389,49 @@ public class TimetableExportService {
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
                     String batchInfo = isLab && entry.getBatch() != null ? " (" + entry.getBatch().getName() + ")" : "";
 
-                    cell.setCellValue(courseName + "\n" + teacherName + "\n" + roomNum + batchInfo);
-                    cell.setCellStyle(isLab ? labStyle : cellStyle);
+                    // Check if this is a lab entry with consecutive slot
+                    boolean shouldMerge = false;
+                    if (isLab && slotIdx + 1 < slots.size()) {
+                        TimeSlot nextSlot = slots.get(slotIdx + 1);
+                        if (!Boolean.TRUE.equals(nextSlot.getIsBreak())) {
+                            String nextKey = DAY_NAMES[d] + ":" + nextSlot.getId();
+                            TimetableEntry nextEntry = lookup.get(nextKey);
+                            
+                            // Check if next entry is same lab session
+                            // Match by: same course, teacher, room, day
+                            if (nextEntry != null && 
+                                nextEntry.getCourse() != null && 
+                                nextEntry.getCourse().getCourseType() == CourseType.LAB &&
+                                entry.getCourse().getId().equals(nextEntry.getCourse().getId()) &&
+                                entry.getTeacher().getId().equals(nextEntry.getTeacher().getId()) &&
+                                entry.getRoom().getId().equals(nextEntry.getRoom().getId()) &&
+                                entry.getDayOfWeek() == nextEntry.getDayOfWeek()) {
+                                
+                                // If both have labSessionGroup, they must match
+                                if (entry.getLabSessionGroup() != null && nextEntry.getLabSessionGroup() != null) {
+                                    shouldMerge = entry.getLabSessionGroup().getId().equals(nextEntry.getLabSessionGroup().getId());
+                                } else if (entry.getBatch() != null && nextEntry.getBatch() != null) {
+                                    // If both have batch, they must match
+                                    shouldMerge = entry.getBatch().getId().equals(nextEntry.getBatch().getId());
+                                } else {
+                                    // Otherwise, match by course/teacher/room is enough
+                                    shouldMerge = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (shouldMerge) {
+                        // Merge this cell with the next row
+                        cell.setCellValue(courseName + "\n" + teacherName + "\n" + roomNum + batchInfo);
+                        cell.setCellStyle(labStyle);
+                        sheet.addMergedRegion(new CellRangeAddress(rowIdx - 1, rowIdx, d + 1, d + 1));
+                        // Mark next cell as merged
+                        mergedCells.add(DAY_NAMES[d] + ":" + (slotIdx + 1));
+                    } else {
+                        cell.setCellValue(courseName + "\n" + teacherName + "\n" + roomNum + batchInfo);
+                        cell.setCellStyle(isLab ? labStyle : theoryStyle);
+                    }
                 } else {
                     cell.setCellValue("-");
                     cell.setCellStyle(cellStyle);

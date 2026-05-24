@@ -128,6 +128,12 @@ export const courseAPI = {
   create: (courseData: any) => api.post('/admin/api/courses', courseData),
   update: (id: number, courseData: any) => api.put(`/admin/api/courses/${id}`, courseData),
   delete: (id: number) => api.delete(`/admin/api/courses/${id}`),
+  // Credit-based progressive allocation
+  getAvailableWithCredits: (divisionId: number, academicYearId: number, semester?: string) =>
+    api.get(`/admin/api/courses/available?divisionId=${divisionId}&academicYearId=${academicYearId}${semester ? `&semester=${semester}` : ''}`),
+  // Get available batches for a specific lab course
+  getAvailableBatchesForCourse: (courseId: number, divisionId: number, academicYearId: number) =>
+    api.get(`/admin/api/courses/${courseId}/available-batches?divisionId=${divisionId}&academicYearId=${academicYearId}`),
 };
 
 // Room API (Admin)
@@ -231,6 +237,11 @@ export const timetableAPI = {
   deleteLabGroup: (groupId: number) => api.delete(`/api/timetable/lab-groups/${groupId}`),
   copyFromDivision: (sourceDivisionId: number, targetDivisionId: number, academicYearId: number) =>
     api.post(`/api/timetable/copy?sourceDivisionId=${sourceDivisionId}&targetDivisionId=${targetDivisionId}&academicYearId=${academicYearId}`),
+  // Availability filtering
+  getAvailableRooms: (day: string, slotId: number, academicYearId: number, divisionId?: number) =>
+    api.get(`/api/timetable/available-rooms?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}${divisionId ? `&divisionId=${divisionId}` : ''}`),
+  getAvailableTeachers: (day: string, slotId: number, academicYearId: number) =>
+    api.get(`/api/timetable/available-teachers?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}`),
 };
 
 // Staff API (for restricted profile updates)
