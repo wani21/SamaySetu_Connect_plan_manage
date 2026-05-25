@@ -1,6 +1,7 @@
 package com.College.timetable.Controller;
 
 import com.College.timetable.Entity.LabSessionGroup;
+import com.College.timetable.Entity.Semester;
 import com.College.timetable.Entity.TimetableEntry;
 import com.College.timetable.IO.CreateLabSessionGroupDTO;
 import com.College.timetable.IO.CreateLabSessionGroupDTO;
@@ -28,22 +29,25 @@ public class TimetableController {
     private final com.College.timetable.Service.TimetableExportService exportService;
 
     // ---------------------------------------------------------------
-    // EXPORT endpoints — PDF & Excel download
+    // EXPORT endpoints — PDF & Excel download (semester-specific)
     // ---------------------------------------------------------------
 
     @GetMapping("/export/division/{divisionId}/pdf")
     @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<byte[]> exportDivisionPDF(
         @PathVariable Long divisionId,
-        @RequestParam Long academicYearId
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
     ) {
         try {
-            byte[] pdf = exportService.generateDivisionPDF(divisionId, academicYearId);
+            byte[] pdf = exportService.generateDivisionPDF(divisionId, academicYearId, Semester.valueOf(semester));
             return ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
-                .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + ".pdf")
+                .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + "_" + semester + ".pdf")
                 .body(pdf);
         } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Error generating division PDF: " + e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -52,15 +56,18 @@ public class TimetableController {
     @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<byte[]> exportDivisionExcel(
         @PathVariable Long divisionId,
-        @RequestParam Long academicYearId
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
     ) {
         try {
-            byte[] excel = exportService.generateDivisionExcel(divisionId, academicYearId);
+            byte[] excel = exportService.generateDivisionExcel(divisionId, academicYearId, Semester.valueOf(semester));
             return ResponseEntity.ok()
                 .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + ".xlsx")
+                .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + "_" + semester + ".xlsx")
                 .body(excel);
         } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Error generating division Excel: " + e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -132,17 +139,37 @@ public class TimetableController {
     }
 
     /**
-     * GET /api/timetable/draft?divisionId=1&academicYearId=1
+     * GET /api/timetable/draft?divisionId=1&academicYearId=1&semester=SEM_3
      * Get DRAFT timetable for admin review (not cached)
+     * Filters by semester to show only entries for that specific semester
      */
     @GetMapping("/draft")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<TimetableEntry>> getDraftTimetable(
         @RequestParam Long divisionId,
-        @RequestParam Long academicYearId
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
     ) {
         return ResponseEntity.ok(
-            timetableService.getDraftTimetable(divisionId, academicYearId)
+            timetableService.getDraftTimetable(divisionId, academicYearId, Semester.valueOf(semester))
+        );
+    }
+
+    /**
+     * GET /api/timetable/editable
+     * Get DRAFT and PUBLISHED timetable entries for admin editing
+     * This allows admins to continue editing even after publishing
+     * Filters by semester to show only entries for that specific semester
+     */
+    @GetMapping("/editable")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<TimetableEntry>> getEditableTimetable(
+        @RequestParam Long divisionId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        return ResponseEntity.ok(
+            timetableService.getEditableTimetable(divisionId, academicYearId, Semester.valueOf(semester))
         );
     }
 
@@ -158,6 +185,9 @@ public class TimetableController {
     @PostMapping("/entries")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> addEntry(@Valid @RequestBody CreateTimetableEntryDTO dto) {
+        // Debug logging
+        System.out.println("DEBUG: Received DTO - batchId: " + dto.getBatchId() + ", labSessionGroupId: " + dto.getLabSessionGroupId());
+        
         try {
             TimetableEntry entry = timetableService.addEntry(dto);
             return ResponseEntity.status(HttpStatus.CREATED).body(entry);
@@ -230,9 +260,10 @@ public class TimetableController {
     public ResponseEntity<?> publishTimetable(
         @RequestParam Long divisionId,
         @RequestParam Long academicYearId,
+        @RequestParam String semester,
         @RequestParam(defaultValue = "false") boolean force
     ) {
-        // Run validation before publishing
+        // Run validation before publishing (validation will be updated to be semester-aware)
         var validation = validationService.validate(divisionId, academicYearId);
 
         if (validation.hasErrors() && !force) {
@@ -244,44 +275,46 @@ public class TimetableController {
             ));
         }
 
-        int count = timetableService.publishTimetable(divisionId, academicYearId);
+        int count = timetableService.publishTimetable(divisionId, academicYearId, Semester.valueOf(semester));
         return ResponseEntity.ok(Map.of(
-            "message", "Timetable published successfully",
+            "message", "Timetable published successfully for " + semester,
             "entriesPublished", count,
             "warnings", validation.getWarnings()
         ));
     }
 
     /**
-     * POST /api/timetable/archive?divisionId=1&academicYearId=1
+     * POST /api/timetable/archive?divisionId=1&academicYearId=1&semester=SEM_3
      * Archive current published timetable (end of semester)
      */
     @PostMapping("/archive")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> archiveTimetable(
         @RequestParam Long divisionId,
-        @RequestParam Long academicYearId
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
     ) {
-        int count = timetableService.archiveTimetable(divisionId, academicYearId);
+        int count = timetableService.archiveTimetable(divisionId, academicYearId, Semester.valueOf(semester));
         return ResponseEntity.ok(Map.of(
-            "message", "Timetable archived successfully",
+            "message", "Timetable archived successfully for " + semester,
             "entriesArchived", count
         ));
     }
 
     /**
-     * DELETE /api/timetable/draft?divisionId=1&academicYearId=1
-     * Clear all DRAFT entries — start fresh
+     * DELETE /api/timetable/draft?divisionId=1&academicYearId=1&semester=SEM_3
+     * Clear all DRAFT entries for a semester — start fresh
      */
     @DeleteMapping("/draft")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> clearDraft(
         @RequestParam Long divisionId,
-        @RequestParam Long academicYearId
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
     ) {
-        int count = timetableService.clearDraft(divisionId, academicYearId);
+        int count = timetableService.clearDraft(divisionId, academicYearId, Semester.valueOf(semester));
         return ResponseEntity.ok(Map.of(
-            "message", "Draft cleared",
+            "message", "Draft cleared for " + semester,
             "entriesDeleted", count
         ));
     }
@@ -353,5 +386,50 @@ public class TimetableController {
             "entriesCopied", copied,
             "note", "Lab session entries were skipped — configure them separately for the target division"
         ));
+    }
+
+    // ---------------------------------------------------------------
+    // AVAILABILITY FILTERING — Real-time filtering for timetable creation
+    // ---------------------------------------------------------------
+
+    /**
+     * GET /api/timetable/available-rooms?day=MONDAY&slotId=5&academicYearId=1&divisionId=1&semester=SEM_3
+     * Get available rooms for a specific day + time slot.
+     * Filters out rooms that are already booked at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
+     */
+    @GetMapping("/available-rooms")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<List<com.College.timetable.Entity.ClassRoom>> getAvailableRooms(
+        @RequestParam com.College.timetable.Entity.DayOfWeek day,
+        @RequestParam Long slotId,
+        @RequestParam Long academicYearId,
+        @RequestParam(required = false) Long divisionId,
+        @RequestParam String semester
+    ) {
+        List<com.College.timetable.Entity.ClassRoom> available = timetableService.getAvailableRooms(
+            day, slotId, academicYearId, divisionId, com.College.timetable.Entity.Semester.valueOf(semester)
+        );
+        return ResponseEntity.ok(available);
+    }
+
+    /**
+     * GET /api/timetable/available-teachers?day=MONDAY&slotId=5&academicYearId=1&semester=SEM_3
+     * Get available teachers for a specific day + time slot.
+     * Filters out teachers that are already assigned at that time or marked unavailable.
+     * Checks conflicts across all semesters in the same series (odd or even).
+     */
+    @GetMapping("/available-teachers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<List<com.College.timetable.Entity.TeacherEntity>> getAvailableTeachers(
+        @RequestParam com.College.timetable.Entity.DayOfWeek day,
+        @RequestParam Long slotId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        List<com.College.timetable.Entity.TeacherEntity> available = timetableService.getAvailableTeachers(
+            day, slotId, academicYearId, com.College.timetable.Entity.Semester.valueOf(semester)
+        );
+        return ResponseEntity.ok(available);
     }
 }

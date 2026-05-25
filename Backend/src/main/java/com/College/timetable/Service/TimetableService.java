@@ -15,6 +15,7 @@ import com.College.timetable.Entity.ClassRoom;
 import com.College.timetable.Entity.CourseEntity;
 import com.College.timetable.Entity.Division;
 import com.College.timetable.Entity.LabSessionGroup;
+import com.College.timetable.Entity.Semester;
 import com.College.timetable.Entity.TeacherEntity;
 import com.College.timetable.Entity.TimeSlot;
 import com.College.timetable.Entity.TimetableEntry;
@@ -138,21 +139,41 @@ public class TimetableService {
         entry.setStatus(TimetableStatus.DRAFT);  // Always starts as DRAFT
 
         // 5. Handle lab session entries
-        if (dto.getLabSessionGroupId() != null) {
-            LabSessionGroup group = labSessionGroupRepository.findById(dto.getLabSessionGroupId())
-                .orElseThrow(() -> new RuntimeException("Lab session group not found"));
-            entry.setLabSessionGroup(group);
+        // Check if this is a lab course by checking the course type
+        boolean isLabCourse = course.getCourseType() == com.College.timetable.Entity.CourseType.LAB;
+        
+        if (isLabCourse) {
+            System.out.println("DEBUG: Lab course detected - courseType: LAB");
             entry.setIsLabSession(true);
-
+            
+            // Set lab session group if provided (for wizard-created labs)
+            if (dto.getLabSessionGroupId() != null) {
+                System.out.println("DEBUG: Lab session group provided - labSessionGroupId: " + dto.getLabSessionGroupId());
+                LabSessionGroup group = labSessionGroupRepository.findById(dto.getLabSessionGroupId())
+                    .orElseThrow(() -> new RuntimeException("Lab session group not found"));
+                entry.setLabSessionGroup(group);
+            }
+            
+            // Set batch if provided (required for lab courses)
             if (dto.getBatchId() != null) {
+                System.out.println("DEBUG: Setting batch - batchId: " + dto.getBatchId());
                 Batch batch = batchRepository.findById(dto.getBatchId())
                     .orElseThrow(() -> new RuntimeException("Batch not found: " + dto.getBatchId()));
                 entry.setBatch(batch);
+            } else {
+                System.out.println("DEBUG: WARNING - Lab course but batchId is null");
             }
+        } else {
+            System.out.println("DEBUG: Theory course - courseType: " + course.getCourseType());
         }
 
         // 6. Save the primary entry
+        System.out.println("DEBUG: Before save - batch: " + (entry.getBatch() != null ? "Batch{id=" + entry.getBatch().getId() + ", name=" + entry.getBatch().getName() + "}" : "null") + 
+                          ", labSessionGroup: " + (entry.getLabSessionGroup() != null ? "LabSessionGroup{id=" + entry.getLabSessionGroup().getId() + "}" : "null"));
         TimetableEntry saved = timetableRepo.save(entry);
+        System.out.println("DEBUG: After save - Entry ID: " + saved.getId() + 
+                          ", batch: " + (saved.getBatch() != null ? "Batch{id=" + saved.getBatch().getId() + ", name=" + saved.getBatch().getName() + "}" : "null") + 
+                          ", labSessionGroup: " + (saved.getLabSessionGroup() != null ? "LabSessionGroup{id=" + saved.getLabSessionGroup().getId() + "}" : "null"));
 
         // 7. AUTO-BOOK NEXT CONSECUTIVE SLOT FOR LAB COURSES
         // Lab sessions occupy 2 truly consecutive lecture periods with NO break in between.
@@ -322,27 +343,27 @@ public class TimetableService {
     }
 
     // ---------------------------------------------------------------
-    // PUBLISH — Admin reviewed DRAFT, now make it live
+    // PUBLISH — Admin reviewed DRAFT, now make it live (per semester)
     // ---------------------------------------------------------------
 
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int publishTimetable(Long divisionId, Long academicYearId) {
-        int count = timetableRepo.publishDivisionTimetable(divisionId, academicYearId);
+    public int publishTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        int count = timetableRepo.publishDivisionTimetableBySemester(divisionId, academicYearId, semester);
         if (count == 0) {
-            throw new RuntimeException("No draft entries found to publish for this division.");
+            throw new RuntimeException("No draft entries found to publish for this division and semester.");
         }
         return count;
     }
 
     // ---------------------------------------------------------------
-    // ARCHIVE — End of semester, move PUBLISHED to ARCHIVED
+    // ARCHIVE — End of semester, move PUBLISHED to ARCHIVED (per semester)
     // ---------------------------------------------------------------
 
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int archiveTimetable(Long divisionId, Long academicYearId) {
-        return timetableRepo.archiveDivisionTimetable(divisionId, academicYearId);
+    public int archiveTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        return timetableRepo.archiveDivisionTimetableBySemester(divisionId, academicYearId, semester);
     }
 
     // ---------------------------------------------------------------
@@ -370,20 +391,51 @@ public class TimetableService {
 
     /**
      * Get DRAFT timetable for admin review — NOT cached
+     * Filters by semester to show only entries for that specific semester
      */
-    public List<TimetableEntry> getDraftTimetable(Long divisionId, Long academicYearId) {
+    public List<TimetableEntry> getDraftTimetable(Long divisionId, Long academicYearId, Semester semester) {
         return timetableRepo
-            .findByDivisionIdAndAcademicYearIdAndStatusOrderByDayOfWeekAscTimeSlotAsc(
-                divisionId, academicYearId, TimetableStatus.DRAFT);
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.DRAFT, semester);
     }
 
     /**
-     * Clear all DRAFT entries for a division — start fresh
+     * Get DRAFT and PUBLISHED timetable entries for admin editing
+     * This allows admins to continue editing even after publishing
+     * Filters by semester to show only entries for that specific semester
+     */
+    public List<TimetableEntry> getEditableTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        // Fetch both DRAFT and PUBLISHED entries
+        List<TimetableEntry> draftEntries = timetableRepo
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.DRAFT, semester);
+        
+        List<TimetableEntry> publishedEntries = timetableRepo
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.PUBLISHED, semester);
+        
+        // Combine both lists
+        List<TimetableEntry> allEntries = new java.util.ArrayList<>(draftEntries);
+        allEntries.addAll(publishedEntries);
+        
+        // Sort by day and time slot
+        allEntries.sort((a, b) -> {
+            int dayCompare = a.getDayOfWeek().compareTo(b.getDayOfWeek());
+            if (dayCompare != 0) return dayCompare;
+            if (a.getTimeSlot() == null || b.getTimeSlot() == null) return 0;
+            return a.getTimeSlot().getStartTime().compareTo(b.getTimeSlot().getStartTime());
+        });
+        
+        return allEntries;
+    }
+
+    /**
+     * Clear all DRAFT entries for a division and semester — start fresh
      */
     @Transactional
     @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
-    public int clearDraft(Long divisionId, Long academicYearId) {
-        return timetableRepo.clearDraftTimetable(divisionId, academicYearId);
+    public int clearDraft(Long divisionId, Long academicYearId, Semester semester) {
+        return timetableRepo.clearDraftTimetableBySemester(divisionId, academicYearId, semester);
     }
 
     // ---------------------------------------------------------------
@@ -599,5 +651,82 @@ public class TimetableService {
         timetableRepo.deleteAll(entries);
         labSessionGroupRepository.deleteById(groupId);
         return count;
+    }
+
+    // ---------------------------------------------------------------
+    // AVAILABILITY FILTERING — Real-time filtering for timetable creation
+    // ---------------------------------------------------------------
+
+    /**
+     * Get available rooms for a specific day + time slot.
+     * Filters out rooms that are already booked (occupied) at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
+     * Considers room type compatibility and capacity.
+     */
+    public List<ClassRoom> getAvailableRooms(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Long divisionId,
+        Semester semester
+    ) {
+        // Get all active rooms
+        List<ClassRoom> allRooms = classRoomRepository.findAll().stream()
+            .filter(r -> Boolean.TRUE.equals(r.getIsActive()))
+            .toList();
+
+        // Get all booked room IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        // Check conflicts across all semesters in the same series (odd or even)
+        List<Long> bookedRoomIds = timetableRepo.findAll().stream()
+            .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+            .filter(e -> e.getDayOfWeek() == day)
+            .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
+            .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .filter(e -> e.getSemester() != null && semester != null && semester.isSameSeries(e.getSemester())) // Same series check
+            .map(e -> e.getRoom() != null ? e.getRoom().getId() : null)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList();
+
+        // Filter out booked rooms
+        return allRooms.stream()
+            .filter(r -> !bookedRoomIds.contains(r.getId()))
+            .toList();
+    }
+
+    /**
+     * Get available teachers for a specific day + time slot.
+     * Filters out teachers that are already assigned at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
+     * Assumes teacher is available unless occupied or explicitly marked unavailable.
+     */
+    public List<TeacherEntity> getAvailableTeachers(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Semester semester
+    ) {
+        // Get all active teachers
+        List<TeacherEntity> allTeachers = teacherRepository.findAll().stream()
+            .filter(t -> Boolean.TRUE.equals(t.getIsActive()))
+            .toList();
+
+        // Get all booked teacher IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        // Check conflicts across all semesters in the same series (odd or even)
+        List<Long> bookedTeacherIds = timetableRepo.findAll().stream()
+            .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+            .filter(e -> e.getDayOfWeek() == day)
+            .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
+            .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .filter(e -> e.getSemester() != null && semester != null && semester.isSameSeries(e.getSemester())) // Same series check
+            .map(e -> e.getTeacher() != null ? e.getTeacher().getId() : null)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList();
+
+        // Filter out booked teachers
+        return allTeachers.stream()
+            .filter(t -> !bookedTeacherIds.contains(t.getId()))
+            .toList();
     }
 }

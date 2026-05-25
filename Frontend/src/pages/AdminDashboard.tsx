@@ -12,6 +12,7 @@ import { AdminProfilePage } from './admin/AdminProfilePage';
 import { DepartmentsPage } from '../components/admin/DepartmentsPage';
 import { CoursesPage } from '../components/admin/CoursesPage';
 import { DivisionsPage } from '../components/admin/DivisionsPage';
+import { TimetableExportPage } from './admin/TimetableExportPage';
 
 export const AdminDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -35,6 +36,7 @@ export const AdminDashboard: React.FC = () => {
             <Route path="rooms" element={<RoomsPage />} />
             <Route path="time-slots" element={<TimeSlotsPage />} />
             <Route path="timetable" element={<TimetableManagementPage />} />
+            <Route path="timetable-export" element={<TimetableExportPage />} />
             <Route path="departments" element={<DepartmentsPage />} />
             <Route path="courses" element={<CoursesPage />} />
             <Route path="divisions" element={<DivisionsPage />} />
