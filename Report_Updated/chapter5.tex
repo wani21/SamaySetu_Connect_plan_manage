@@ -1,0 +1,167 @@
+\newpage
+\chapter{System Design, Implementation, and Results}
+
+\section{System Architecture}
+
+The SamaySetu platform is organised as a classic three-tier web application augmented with a read-path cache and an outbound email integration. The three tiers --- presentation, application, and data --- are clearly separated by well-defined interfaces, which supports independent evolution, horizontal scaling, and reuse.
+
+The \textbf{presentation tier} is a React 18 single-page application written in TypeScript and built with Vite. It communicates with the application tier exclusively through a REST API over HTTPS. All client-side state that requires persistence across page reloads --- the user profile and authentication token --- is stored in the browser's \texttt{localStorage} (when the user opts for ``remember me'') or \texttt{sessionStorage} (otherwise) through a Zustand store with the \texttt{persist} middleware. Every outgoing request passes through an Axios interceptor that attaches the JWT as a \texttt{Bearer} header; every incoming response passes through a response interceptor that detects structured authentication failures and transparently redirects to the login page.
+
+The \textbf{application tier} is a Spring Boot 3.5.5 REST API running on Java 17 and served through an embedded Tomcat container on port 8083. It implements the full business logic of the platform: authentication, authorisation, master-data management, timetable construction, conflict detection, pre-publish validation, publish-lifecycle management, caching, audit logging, and export generation. Cross-cutting concerns are implemented through Spring filters (rate limiting, JWT validation), method-level annotations (\texttt{@PreAuthorize}, \texttt{@Transactional}, \texttt{@Cacheable}, \texttt{@CacheEvict}), and advice components (global exception handling, input sanitisation).
+
+The \textbf{data tier} consists of PostgreSQL 17 for primary relational storage and Redis for the read-path cache. Hibernate manages the JPA mapping between Java entities and PostgreSQL tables. Spring's Cache abstraction, backed by the Redis cache manager, transparently caches frequently-read timetable data and invalidates it on every write.
+
+This layered architecture yields several benefits. First, each tier can be scaled independently: the frontend is served from a CDN (AWS Amplify), the backend can be replicated behind a load balancer, and PostgreSQL can be upgraded or replicated without touching application code. Second, security is concentrated at the application tier, so the frontend has no direct access to the database. Third, the Redis cache allows the most-read endpoints --- \texttt{GET /api/timetable/division/\{id\}} and \texttt{GET /api/timetable/teacher/\{id\}} --- to respond in sub-millisecond time under normal load.
+
+\section{Domain Model}
+
+The domain is captured in the relational schema through fifteen principal entities, each implemented as a JPA \texttt{@Entity} class.
+
+\begin{itemize}
+    \item \texttt{AcademicYear} (table \texttt{academic\_years}) --- the top-level tenant-like scope, marked as current with a unique flag.
+    \item \texttt{DepartmentEntity} (table \texttt{departments}) --- belongs to an academic year; contains teachers, courses, rooms, divisions.
+    \item \texttt{CourseEntity} (table \texttt{courses}) --- theory or laboratory, belongs to a department, tagged with a semester.
+    \item \texttt{Division} (table \texttt{divisions}) --- identifies year $\times$ branch $\times$ section, declares student strength and time-slot profile.
+    \item \texttt{Batch} (table \texttt{batches}) --- splits a division for laboratory sessions.
+    \item \texttt{ClassRoom} (table \texttt{classrooms}) --- CLASSROOM / LAB / AUDITORIUM, with capacity.
+    \item \texttt{TimeSlot} (table \texttt{time\_slots}) --- lecture periods and breaks, organised as TYPE\_1 and TYPE\_2 profiles.
+    \item \texttt{TeacherEntity} (table \texttt{users}) --- unified user row, role ∈ \{ADMIN, HOD, TIMETABLE\_COORDINATOR, TEACHER\}.
+    \item \texttt{TeacherAvailability} (table \texttt{user\_availability}) --- optional per-slot availability preferences.
+    \item \texttt{TimetableEntry} (table \texttt{timetable\_entries}) --- the core scheduling row; status ∈ \{DRAFT, PUBLISHED, ARCHIVED\}.
+    \item \texttt{LabSessionGroup} (table \texttt{lab\_session\_groups}) --- parent row linking the $2 \times N$ entries of one laboratory session.
+    \item \texttt{Student} (table \texttt{students}) --- reserved for future student-portal functionality.
+    \item The \texttt{teacher\_courses} join table realises the many-to-many relation between teachers and the courses they teach.
+\end{itemize}
+
+Three Java enumerations encode categorical values: \texttt{CourseType} (\{THEORY, LAB\}), \texttt{RoomType} (\{CLASSROOM, LAB, AUDITORIUM\}), \texttt{DayOfWeek} (\{MONDAY..SATURDAY\}), \texttt{Semester} (\{SEM\_1..SEM\_8\}), and \texttt{TimetableStatus} (\{DRAFT, PUBLISHED, ARCHIVED\}). Each is stored as a VARCHAR in the database through \texttt{@Enumerated(EnumType.STRING)} to preserve readability during direct SQL inspection.
+
+\section{Formal Description of the Conflict Detection Algorithm}
+
+The conflict checker is the algorithmic heart of SamaySetu. It is invoked on every timetable entry write (create, update, or move) with the following inputs:
+
+\begin{itemize}
+    \item \texttt{teacherId}, \texttt{roomId}, \texttt{divisionId}, \texttt{timeSlotId}, \texttt{academicYearId}, \texttt{dayOfWeek};
+    \item \texttt{labSessionGroupId} (null for theory entries, non-null for lab entries);
+    \item \texttt{teacherMaxWeeklyHours}, \texttt{batchStrength} (for lab entries), \texttt{courseType};
+    \item \texttt{excludeId} --- the id of the currently-being-edited entry, so that it does not conflict with itself on updates.
+\end{itemize}
+
+The algorithm performs eight checks sequentially and accumulates every detected conflict before returning. Notably, it does \textbf{not} short-circuit on the first conflict, so the administrator always sees the complete list of problems in one pass and can address them together. Let $E$ denote the set of all timetable entries for the given academic year and day, excluding the entry being edited:
+
+\begin{itemize}
+    \item \textbf{Check 0 --- Break protection.} If the selected time slot is marked as a break ($\text{slot.isBreak} = \text{true}$), the placement is immediately rejected and no further checks run.
+    \item \textbf{Check 1 --- Teacher conflict.} For non-lab entries, reject if $\exists e \in E$ such that $e.\text{teacherId} = \text{teacherId} \wedge e.\text{timeSlotId} = \text{timeSlotId} \wedge e.\text{dayOfWeek} = \text{dayOfWeek}$.
+    \item \textbf{Check 2 --- Room conflict.} Reject if $\exists e \in E$ such that $e.\text{roomId} = \text{roomId} \wedge e.\text{timeSlotId} = \text{timeSlotId} \wedge e.\text{dayOfWeek} = \text{dayOfWeek}$. (Applies to both theory and lab entries.)
+    \item \textbf{Check 3 --- Division conflict.} For non-lab entries, reject if $\exists e \in E$ such that $e.\text{divisionId} = \text{divisionId} \wedge e.\text{timeSlotId} = \text{timeSlotId} \wedge e.\text{dayOfWeek} = \text{dayOfWeek}$.
+    \item \textbf{Check 4 --- Teacher daily period limit.} For non-lab entries, reject if the total number of entries already assigned to the teacher on this day reaches or exceeds the institutional cap (configurable via \texttt{app.timetable.max-periods-per-day}, default 6).
+    \item \textbf{Check 5 --- Teacher weekly hour limit.} Compute the teacher's currently-assigned weekly minutes as the sum of \texttt{timeSlot.durationMinutes} over all entries. Add the duration of the slot being assigned. Convert to hours. If the projected total exceeds the teacher's \texttt{maxWeeklyHours}, reject. This check uses actual durations rather than entry counts, correctly handling 30-minute tutorials and 120-minute labs.
+    \item \textbf{Check 6 --- Room capacity.} For lab entries, reject if $\text{batchStrength} > \text{room.capacity}$. For theory entries, reject if $\text{division.totalStudents} > \text{room.capacity}$.
+    \item \textbf{Check 7 --- Room-course type mismatch.} Warn if a lab course is scheduled in a non-lab room, or if a theory course is scheduled in a lab room.
+    \item \textbf{Check 8 --- Teacher availability.} For non-lab entries, if the teacher has recorded any availability preferences for the day, verify that the requested slot falls within an \texttt{isAvailable=true} window; otherwise report the teacher as unavailable at that slot.
+\end{itemize}
+
+The output is an ordered list of human-readable conflict messages. The controller returns HTTP 409 with a structured body of the form:
+\begin{verbatim}
+    { "message": "Scheduling conflicts detected",
+      "conflicts": [ "Teacher conflict: ...",
+                     "Room conflict: ...", ... ] }
+\end{verbatim}
+The frontend renders this list as a dismissible error panel alongside the form.
+
+\section{Lab Session Atomic Creation}
+
+Laboratory sessions are the most intricate case because a single logical session manifests as $2 \times N$ timetable entries --- $N$ parallel batches, each running across 2 consecutive periods. The Lab Session Wizard handles this by:
+
+\begin{enumerate}
+    \item Creating a \texttt{LabSessionGroup} row capturing the division, course, academic year, starting time slot, and day.
+    \item For each of the $N$ batches, creating two \texttt{TimetableEntry} rows (for the two consecutive periods) with the selected teacher and room for that batch. Each entry's \texttt{labSessionGroup} foreign key is set to the group just created.
+    \item Running the conflict engine with \texttt{labSessionGroupId} set to the new group id, which instructs the engine to skip the teacher-uniqueness and division-uniqueness checks (since parallel batches are intentional), while still running the room, capacity, availability, and duration checks.
+    \item Committing all $2N + 1$ rows in a single database transaction, so a failure at any point rolls back the entire wizard invocation.
+\end{enumerate}
+
+Deletion of a lab session is similarly atomic: deleting the \texttt{LabSessionGroup} cascades (via JPA \texttt{CascadeType.ALL}) to all its child entries.
+
+\section{Pre-Publish Validation Dashboard}
+
+Before a draft timetable is made visible to the faculty, the \texttt{TimetableValidationService} runs a comprehensive pre-publish audit, returning a \texttt{ValidationResult} containing an \texttt{errors} list and a \texttt{warnings} list.
+
+\textbf{Blocking errors} prevent publication:
+\begin{itemize}
+    \item No draft entries exist for the division.
+    \item Any teacher's scheduled weekly hours exceed their \texttt{maxWeeklyHours}.
+\end{itemize}
+
+\textbf{Informational warnings} are reported but do not block:
+\begin{itemize}
+    \item Any weekday has zero entries (``Saturday has no classes --- is this intentional?'').
+    \item Any core-hour slot (first four morning periods) on a scheduled day is empty.
+    \item Any teacher has scheduled weekly hours below their \texttt{minWeeklyHours}.
+    \item Any laboratory session is not assigned to a LAB-type room.
+\end{itemize}
+
+The dashboard presents a clear summary (\textit{``N errors, M warnings''}) before the Publish button, and the Publish button is disabled if $N > 0$.
+
+\section{Caching and Cache Invalidation}
+
+The published timetable endpoints are decorated with Spring's \texttt{@Cacheable} annotation:
+
+\begin{verbatim}
+    @Cacheable(value = "timetable-division", key = "{#divisionId, #academicYearId}")
+    public List<TimetableEntry> getTimetableForDivision(...) { ... }
+
+    @Cacheable(value = "timetable-teacher", key = "{#teacherId, #academicYearId}")
+    public List<TimetableEntry> getTimetableForTeacher(...) { ... }
+\end{verbatim}
+
+Every cache entry is serialised into Redis with a 10-minute time-to-live. This bounds the staleness window even if eviction logic misses a case.
+
+Write paths invalidate the cache via \texttt{@CacheEvict}. The publish path evicts both \texttt{timetable-division} and \texttt{timetable-teacher} for every affected teacher and division; the archive path does the same. This guarantees that the next read after a publish hits the database and refreshes the cache.
+
+\section{Security Model}
+
+Security is implemented as a defence-in-depth stack.
+
+\textbf{Authentication.} Login credentials are verified against BCrypt-hashed passwords stored in \texttt{users.password}. On success, the \texttt{JWTUtil} issues a JSON Web Token with the user's email in the \texttt{sub} claim, a 1-hour expiry, and HS256 signing using a Base64-encoded secret loaded from the \texttt{JWT\_SECRET\_KEY} environment variable.
+
+\textbf{Authorisation.} The token travels in the \texttt{Authorization: Bearer} header. The \texttt{JWTRequestFilter} extracts and validates the token on every request and populates the Spring Security context with a single granted authority \texttt{ROLE\_<role.toUpperCase()>}. The \texttt{SecurityConfig} then enforces URL-level access rules (e.g. \texttt{/admin/**} requires \texttt{hasRole("ADMIN")}), and method-level \texttt{@PreAuthorize} annotations on specific controller methods provide additional fine-grained control.
+
+\textbf{Rate limiting.} The \texttt{RateLimitFilter} applies a sliding-window counter per client IP to authentication endpoints, blocking further attempts with HTTP 429 after a configurable threshold. This defeats brute-force login attempts before they reach BCrypt.
+
+\textbf{Account lockout.} After five consecutive failed login attempts, a 15-minute lockout is applied at the database level by setting \texttt{account\_locked\_until} on the \texttt{users} row.
+
+\textbf{Input sanitisation.} The \texttt{InputSanitizationAdvice} \texttt{@RestControllerAdvice} neutralises XSS-unsafe content in incoming request bodies.
+
+\textbf{Security headers.} Response headers include HSTS (\texttt{max-age=31536000; includeSubDomains}), X-Frame-Options: DENY, X-Content-Type-Options: nosniff, and appropriate Cache-Control directives.
+
+\textbf{Auditing.} Every administrator-sensitive action (login success/failure, staff creation, approval, timetable publish/archive) emits a structured log entry prefixed with \texttt{[AUDIT]}, suitable for downstream forwarding to CloudWatch or an ELK stack.
+
+\section{Results and Testing}
+
+The system was developed and validated through an iterative combination of manual testing, Postman-driven endpoint testing, and live demonstration scenarios using realistic seed data modelled on MITAOE's 2025--2026 academic year.
+
+\textbf{Seed data coverage.} The development seed script populates two academic years, eight departments, ten divisions, thirty-two courses, sixteen classrooms, ten time slots (seven lecture periods + three breaks across two profiles), twenty-one teachers, twelve batches, and a full set of teacher--course links. This provides a realistic baseline against which every system feature can be exercised.
+
+\textbf{Conflict engine validation.} Each of the eight conflict checks was validated by constructing deliberately-conflicting entries and verifying that the engine detected each conflict and rejected the save with an appropriate human-readable message. The teacher weekly-hour check was specifically validated against combinations of 30-minute and 120-minute slots to confirm that the duration-weighted computation is correct rather than the naive entry count.
+
+\textbf{Lab session wizard.} Validated by creating a three-batch DBMS lab session spanning two consecutive periods and verifying that (a) all six entries are created, (b) they share the same \texttt{labSessionGroupId}, (c) each batch has a distinct teacher and room, (d) the teacher and division uniqueness checks correctly recognise these as intentional parallels, and (e) deleting the group cascades to delete all six entries atomically.
+
+\textbf{Publish lifecycle.} Validated by building a draft timetable, running pre-publish validation, observing blocking errors when a teacher exceeded their maximum weekly hours, correcting the draft, re-validating, publishing, verifying that teachers see the new timetable immediately, triggering a re-publish after a modification, and verifying that the previous version is flipped to ARCHIVED rather than deleted.
+
+\textbf{Export fidelity.} PDF and Excel exports were visually inspected across multiple division timetables to verify institutional branding, correct merged break rows, distinct colour coding for laboratory cells (purple) versus theory cells (primary blue), and correct inclusion of batch labels for lab entries.
+
+\textbf{Security validation.} Login brute-force was rate-limited at the configured thresholds; invalid JWT tokens were rejected with structured 401 responses; missing-role access attempts produced structured 403 responses; and the frontend interceptor correctly triggered logout and redirect on structured auth failures while ignoring generic 403s arising from validation errors.
+
+\textbf{End-user acceptance.} Multiple dry runs of the full Administrator $\rightarrow$ HOD $\rightarrow$ Timetable Coordinator $\rightarrow$ Teacher workflow were executed, including academic-year creation, department copy-over from the previous year, staff CSV upload, timetable building using every interaction mode (click-to-add, click-to-edit, drag-to-move, drag-to-swap, Lab Session Wizard, copy-from-division), pre-publish validation, publication, teacher login, personal timetable viewing, PDF download, and Excel download. All flows completed without intervention.
+
+\section{Development Approach}
+
+The project was developed following a structured software-engineering methodology comprising five sequential-with-iteration phases.
+
+The \textbf{requirement analysis} phase studied manual timetable preparation at MITAOE, documented functional and non-functional requirements, and defined the scope boundary (what is in scope, what is explicitly future work). The \textbf{system design} phase produced the relational schema, the REST API contract, the role-and-permission matrix, the conflict-rule specification, and the frontend wireframes.
+
+The \textbf{implementation} phase proceeded vertically --- one feature at a time, each implemented end-to-end (database migration, service layer, controller, frontend page, Postman test) before moving on. This minimised the risk of late-stage integration surprises. The \textbf{testing} phase combined manual exploratory testing, Postman-driven endpoint coverage, and live dry-runs using seed data. The \textbf{deployment} phase produced AWS deployment scripts, GitHub Actions CI, and this project report.
+
+Throughout, the team adopted version control discipline (feature branches, pull requests, no direct pushes to \texttt{main}), environment-driven configuration (no secrets in source), and rigorous attention to correctness at every layer.
+
+\vspace{10mm}
+\hrule

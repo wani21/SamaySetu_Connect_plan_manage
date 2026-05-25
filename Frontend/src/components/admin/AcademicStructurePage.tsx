@@ -215,7 +215,7 @@ export const AcademicStructurePage: React.FC = () => {
     switch (type) {
       case 'academic-year': return { yearName: '', startDate: '', endDate: '', isCurrent: false };
       case 'department': return { name: '', code: '', headOfDepartment: '', years: [1, 2, 3, 4] };
-      case 'division': return { name: '', branch: '', totalStudents: '', timeSlotType: 'TYPE_1', classTeacher: '', classRepresentative: '' };
+      case 'division': return { name: '', branch: selectedDepartment?.name || '', totalStudents: '', timeSlotType: 'TYPE_1', classTeacher: '', classRepresentative: '' };
       case 'course': return { name: '', code: '', courseType: 'THEORY', credits: '', hoursPerWeek: '' };
       case 'batch': return { name: '' };
       default: return {};
@@ -228,7 +228,7 @@ export const AcademicStructurePage: React.FC = () => {
       case 'department': 
         const yearsArray = item.years ? item.years.split(',').map((y: string) => parseInt(y.trim())) : [1, 2, 3, 4];
         return { name: item.name, code: item.code, headOfDepartment: item.headOfDepartment || '', years: yearsArray };
-      case 'division': return { name: item.name, branch: item.branch, totalStudents: item.totalStudents?.toString(), timeSlotType: item.timeSlotType || 'TYPE_1', classTeacher: item.classTeacher || '', classRepresentative: item.classRepresentative || '' };
+      case 'division': return { name: item.name, branch: item.branch || selectedDepartment?.name || '', totalStudents: item.totalStudents?.toString(), timeSlotType: item.timeSlotType || 'TYPE_1', classTeacher: item.classTeacher || '', classRepresentative: item.classRepresentative || '' };
       case 'course': return { name: item.name, code: item.code, courseType: item.courseType, credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
       case 'batch': return { name: item.name };
       default: return {};
@@ -784,7 +784,7 @@ export const AcademicStructurePage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input label="Division Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })} placeholder="A" maxLength={2} required />
-              <Input label="Branch" value={formData.branch} onChange={(e) => setFormData({ ...formData, branch: e.target.value })} placeholder="Computer Science" required />
+              <Input label="Branch" value={formData.branch} disabled={true} placeholder="Computer Science" required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Total Students" type="number" value={formData.totalStudents} onChange={(e) => setFormData({ ...formData, totalStudents: e.target.value })} placeholder="60" />

@@ -8,6 +8,7 @@ import com.College.timetable.Repository.TeacherAvailability_repo;
 import com.College.timetable.Repository.Room_repo;
 import com.College.timetable.Repository.Division_repo;
 import com.College.timetable.Repository.TimeSlot_repo;
+import com.College.timetable.Repository.Batch_repo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,6 +25,7 @@ public class ConflictCheckService {
     private final Room_repo roomRepo;
     private final Division_repo divisionRepo;
     private final TimeSlot_repo timeSlotRepo;
+    private final Batch_repo batchRepo;
 
     // Configurable limits — override in application.properties
     @Value("${app.timetable.max-periods-per-day:6}")
@@ -37,6 +39,7 @@ public class ConflictCheckService {
         List<String> conflicts = new ArrayList<>();
 
         boolean isLabEntry = request.getLabSessionGroupId() != null;
+        boolean isLabCourse = "LAB".equalsIgnoreCase(request.getCourseType());
 
         // ── 0. BREAK SLOT PROTECTION ──
         Optional<TimeSlot> slotOpt = timeSlotRepo.findById(request.getTimeSlotId());
@@ -49,20 +52,18 @@ public class ConflictCheckService {
         }
 
         // ── 1. TEACHER CONFLICT — teacher already assigned at this time ──
-        if (!isLabEntry) {
-            boolean teacherBooked = timetableEntryRepository.isTeacherBooked(
-                request.getTeacherId(),
-                request.getDayOfWeek(),
-                request.getTimeSlotId(),
-                request.getAcademicYearId(),
-                excludeId
-            );
-            if (teacherBooked) {
-                conflicts.add(String.format(
-                    "Teacher conflict: This teacher is already assigned to another class on %s at this time slot.",
-                    request.getDayOfWeek()
-                ));
-            }
+        boolean teacherBooked = timetableEntryRepository.isTeacherBooked(
+            request.getTeacherId(),
+            request.getDayOfWeek(),
+            request.getTimeSlotId(),
+            request.getAcademicYearId(),
+            excludeId
+        );
+        if (teacherBooked) {
+            conflicts.add(String.format(
+                "Teacher conflict: This teacher is already assigned to another class on %s at this time slot.",
+                request.getDayOfWeek()
+            ));
         }
 
         // ── 2. ROOM CONFLICT — always checked, even for labs ──
@@ -80,8 +81,8 @@ public class ConflictCheckService {
             ));
         }
 
-        // ── 3. DIVISION CONFLICT — division already has a class at this time ──
-        if (!isLabEntry) {
+        // ── 3. DIVISION CONFLICT — division already has a class at this time (skipped for labs) ──
+        if (!isLabCourse) {
             boolean divisionBooked = timetableEntryRepository.isDivisionBooked(
                 request.getDivisionId(),
                 request.getDayOfWeek(),
@@ -97,23 +98,38 @@ public class ConflictCheckService {
             }
         }
 
-        // ── 4. TEACHER DAILY PERIOD LIMIT (configurable) ──
-        if (!isLabEntry) {
-            long dailyPeriods = timetableEntryRepository.countTeacherPeriodsOnDay(
-                request.getTeacherId(),
+        // ── 3.5. BATCH CONFLICT — batch already has a class/lab at this time ──
+        if (isLabCourse && request.getBatchId() != null) {
+            boolean batchBooked = timetableEntryRepository.isBatchBooked(
+                request.getBatchId(),
+                request.getDayOfWeek(),
+                request.getTimeSlotId(),
                 request.getAcademicYearId(),
-                request.getDayOfWeek()
+                excludeId
             );
-            if (dailyPeriods >= maxPeriodsPerDay) {
+            if (batchBooked) {
                 conflicts.add(String.format(
-                    "Teacher daily limit: This teacher already has %d periods on %s. Maximum is %d per day.",
-                    dailyPeriods, request.getDayOfWeek(), maxPeriodsPerDay
+                    "Batch conflict: This batch already has a class/lab scheduled on %s at this time slot.",
+                    request.getDayOfWeek()
                 ));
             }
         }
 
+        // ── 4. TEACHER DAILY PERIOD LIMIT (configurable) ──
+        long dailyPeriods = timetableEntryRepository.countTeacherPeriodsOnDay(
+            request.getTeacherId(),
+            request.getAcademicYearId(),
+            request.getDayOfWeek()
+        );
+        if (dailyPeriods >= maxPeriodsPerDay) {
+            conflicts.add(String.format(
+                "Teacher daily limit: This teacher already has %d periods on %s. Maximum is %d per day.",
+                dailyPeriods, request.getDayOfWeek(), maxPeriodsPerDay
+            ));
+        }
+
         // ── 5. TEACHER WEEKLY HOUR LIMIT (uses actual duration, not entry count) ──
-        if (!isLabEntry && request.getTeacherMaxWeeklyHours() != null) {
+        if (request.getTeacherMaxWeeklyHours() != null) {
             // FIX: Use SUM(durationMinutes) instead of COUNT(entries)
             Integer weeklyMinutes = timetableEntryRepository.calculateTeacherWeeklyMinutes(
                 request.getTeacherId(),
@@ -137,28 +153,61 @@ public class ConflictCheckService {
             }
         }
 
-        // ── 6. ROOM CAPACITY vs DIVISION STRENGTH ──
+        // ── 6. ROOM CAPACITY vs DIVISION STRENGTH OR BATCH STRENGTH ──
         Optional<ClassRoom> roomOpt = roomRepo.findById(request.getRoomId());
         if (roomOpt.isPresent()) {
             ClassRoom room = roomOpt.get();
-
-            if (isLabEntry && request.getBatchStrength() != null) {
-                // For lab entries: check batch size fits in room
-                if (room.getCapacity() != null && request.getBatchStrength() > room.getCapacity()) {
-                    conflicts.add(String.format(
-                        "Room capacity: Batch has %d students but room '%s' only holds %d.",
-                        request.getBatchStrength(), room.getName(), room.getCapacity()
-                    ));
+            isLabCourse = "LAB".equalsIgnoreCase(request.getCourseType());
+            int requiredCapacity = 0;
+            Integer batchStrength = null;
+            Long batchId = request.getBatchId();
+            
+            Optional<Division> divOpt = divisionRepo.findById(request.getDivisionId());
+            int divStrength = divOpt.map(Division::getTotalStudents).orElse(0);
+            
+            if (isLabCourse) {
+                if (batchId != null) {
+                    Optional<Batch> batchOpt = batchRepo.findById(batchId);
+                    if (batchOpt.isPresent()) {
+                        Batch batch = batchOpt.get();
+                        if (batch.getStrength() != null && batch.getStrength() > 0) {
+                            batchStrength = batch.getStrength();
+                            requiredCapacity = batch.getStrength();
+                        }
+                    }
+                }
+                
+                if (batchStrength == null) {
+                    long totalBatches = batchRepo.countByDivisionId(request.getDivisionId());
+                    if (totalBatches <= 0) {
+                        totalBatches = 3; // Standard fallback
+                    }
+                    requiredCapacity = (int) Math.ceil((double) divStrength / totalBatches);
                 }
             } else {
-                // For theory: check division strength fits in room
-                Optional<Division> divOpt = divisionRepo.findById(request.getDivisionId());
-                if (divOpt.isPresent() && divOpt.get().getTotalStudents() != null
-                        && room.getCapacity() != null
-                        && divOpt.get().getTotalStudents() > room.getCapacity()) {
+                requiredCapacity = divStrength;
+            }
+            
+            // Temporary logging for capacity checking
+            System.out.printf("[CAPACITY CHECK LOG] Course Type: %s, Division Strength: %d, Batch ID: %s, Batch Strength: %s, Computed Required Capacity: %d, Room Capacity: %d%n",
+                request.getCourseType(),
+                divStrength,
+                batchId != null ? batchId.toString() : "N/A",
+                batchStrength != null ? batchStrength.toString() : "N/A",
+                requiredCapacity,
+                room.getCapacity() != null ? room.getCapacity() : 0
+            );
+            
+            if (room.getCapacity() != null && requiredCapacity > room.getCapacity()) {
+                if (isLabCourse) {
+                    conflicts.add(String.format(
+                        "Room capacity: Batch has %d students but room '%s' only holds %d.",
+                        requiredCapacity, room.getName(), room.getCapacity()
+                    ));
+                } else {
                     conflicts.add(String.format(
                         "Room capacity: Division has %d students but room '%s' only holds %d. Consider a larger room.",
-                        divOpt.get().getTotalStudents(), room.getName(), room.getCapacity()
+                        divStrength, room.getName(), room.getCapacity()
                     ));
                 }
             }
@@ -186,7 +235,7 @@ public class ConflictCheckService {
         }
 
         // ── 8. TEACHER AVAILABILITY CHECK ──
-        if (!isLabEntry && slotOpt.isPresent()) {
+        if (slotOpt.isPresent()) {
             TimeSlot slot = slotOpt.get();
             try {
                 long availCount = availabilityRepo.countAvailability(
@@ -237,5 +286,6 @@ public class ConflictCheckService {
         private Integer teacherMaxWeeklyHours;
         private Integer batchStrength;    // for lab entries — number of students in batch
         private String courseType;        // THEORY or LAB — for room type matching
+        private Long batchId;
     }
 }

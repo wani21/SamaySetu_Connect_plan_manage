@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.cache.annotation.CacheEvict;
@@ -31,6 +32,7 @@ import com.College.timetable.Repository.Room_repo;
 import com.College.timetable.Repository.Teacher_Repo;
 import com.College.timetable.Repository.TimeSlot_repo;
 import com.College.timetable.Repository.TimetableEntry_repo;
+import com.College.timetable.Repository.TeacherAvailability_repo;
 import com.College.timetable.Service.ConflictCheckService.TimetableEntryRequest;
 import com.College.timetable.Util.TimetableConflictException;
 
@@ -40,6 +42,12 @@ public class TimetableService {
 
     @Autowired
     private TimetableEntry_repo timetableRepo;
+
+    @Autowired
+    private TeacherAvailability_repo availabilityRepo;
+
+    @Value("${app.timetable.max-periods-per-day:6}")
+    private int maxPeriodsPerDay;
     
     @Autowired
     private ConflictCheckService conflictCheckService;
@@ -101,6 +109,7 @@ public class TimetableService {
                 courseOpt.map(c -> c.getCourseType() != null ? c.getCourseType().name() : null).orElse(null)
             )
             .batchStrength(null) // TODO: populate from batch entity when lab session
+            .batchId(dto.getBatchId())
             .build();
 
         // 2. Check ALL conflicts — collect all messages before failing
@@ -220,6 +229,7 @@ public class TimetableService {
                 .dayOfWeek(dto.getDayOfWeek())
                 .teacherMaxWeeklyHours(teacherOpt.map(TeacherEntity::getMaxWeeklyHours).orElse(null))
                 .courseType("LAB")
+                .batchId(dto.getBatchId())
                 .build();
 
             List<String> nextConflicts = conflictCheckService.checkConflicts(nextConflictReq, null);
@@ -289,6 +299,7 @@ public class TimetableService {
             .courseType(
                 updCourseOpt.map(c -> c.getCourseType() != null ? c.getCourseType().name() : null).orElse(null)
             )
+            .batchId(dto.getBatchId())
             .build();
 
         List<String> conflicts = conflictCheckService.checkConflicts(conflictRequest, entryId);
@@ -670,6 +681,21 @@ public class TimetableService {
         Long divisionId,
         Semester semester
     ) {
+        return getAvailableRooms(day, slotId, academicYearId, divisionId, semester, null, null);
+    }
+
+    /**
+     * Advanced Get available rooms supporting course and batch context.
+     */
+    public List<ClassRoom> getAvailableRooms(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Long divisionId,
+        Semester semester,
+        Long courseId,
+        Long batchId
+    ) {
         // Get all active rooms
         List<ClassRoom> allRooms = classRoomRepository.findAll().stream()
             .filter(r -> Boolean.TRUE.equals(r.getIsActive()))
@@ -688,9 +714,52 @@ public class TimetableService {
             .distinct()
             .toList();
 
-        // Filter out booked rooms
+        // Capacity and Room-type requirements
+        CourseEntity course = courseId != null ? courseRepository.findById(courseId).orElse(null) : null;
+        boolean isLabCourse = course != null && course.getCourseType() == com.College.timetable.Entity.CourseType.LAB;
+
+        int requiredCapacity = 0;
+        Integer batchStrength = null;
+        
+        int divStrength = divisionId != null ? divisionRepository.findById(divisionId).map(Division::getTotalStudents).orElse(0) : 0;
+        
+        if (isLabCourse) {
+            if (batchId != null) {
+                Batch batch = batchRepository.findById(batchId).orElse(null);
+                if (batch != null && batch.getStrength() != null && batch.getStrength() > 0) {
+                    batchStrength = batch.getStrength();
+                    requiredCapacity = batch.getStrength();
+                }
+            }
+            
+            if (batchStrength == null && divisionId != null) {
+                long totalBatches = batchRepository.countByDivisionId(divisionId);
+                if (totalBatches <= 0) {
+                    totalBatches = 3; // Standard fallback
+                }
+                requiredCapacity = (int) Math.ceil((double) divStrength / totalBatches);
+            }
+        } else {
+            requiredCapacity = divStrength;
+        }
+
+        final int reqCap = requiredCapacity;
+
         return allRooms.stream()
+            // 1. Room is not booked
             .filter(r -> !bookedRoomIds.contains(r.getId()))
+            // 2. Room capacity matches
+            .filter(r -> r.getCapacity() == null || r.getCapacity() >= reqCap)
+            // 3. Room type compatibility
+            .filter(r -> {
+                if (course == null) return true; // if no course is selected yet, show all
+                String roomType = r.getRoomType() != null ? r.getRoomType().name() : "CLASSROOM";
+                if (isLabCourse) {
+                    return "LAB".equalsIgnoreCase(roomType);
+                } else {
+                    return !"LAB".equalsIgnoreCase(roomType);
+                }
+            })
             .toList();
     }
 
@@ -705,6 +774,19 @@ public class TimetableService {
         Long slotId,
         Long academicYearId,
         Semester semester
+    ) {
+        return getAvailableTeachers(day, slotId, academicYearId, semester, null);
+    }
+
+    /**
+     * Advanced Get available teachers with course-specific workload and limits check.
+     */
+    public List<TeacherEntity> getAvailableTeachers(
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Semester semester,
+        Long courseId
     ) {
         // Get all active teachers
         List<TeacherEntity> allTeachers = teacherRepository.findAll().stream()
@@ -724,9 +806,133 @@ public class TimetableService {
             .distinct()
             .toList();
 
-        // Filter out booked teachers
+        TimeSlot slot = timeSlotRepository.findById(slotId).orElse(null);
+        int newSlotMinutes = slot != null && slot.getDurationMinutes() != null ? slot.getDurationMinutes() : 60;
+        
+        CourseEntity course = courseId != null ? courseRepository.findById(courseId).orElse(null) : null;
+        boolean isLabCourse = course != null && course.getCourseType() == com.College.timetable.Entity.CourseType.LAB;
+        if (isLabCourse) {
+            newSlotMinutes = newSlotMinutes * 2; // Lab occupies 2 consecutive periods
+        }
+        
+        final int neededMinutes = newSlotMinutes;
+
         return allTeachers.stream()
+            // 1. Teacher not booked in this slot
             .filter(t -> !bookedTeacherIds.contains(t.getId()))
+            // 2. Explicit availability check
+            .filter(t -> {
+                if (slot == null) return true;
+                try {
+                    long availCount = availabilityRepo.countAvailability(
+                        t.getId(), day, slot.getStartTime(), slot.getEndTime()
+                    );
+                    var dayAvailability = availabilityRepo.findByTeacherIdAndDayOfWeek(t.getId(), day);
+                    if (!dayAvailability.isEmpty() && availCount == 0) {
+                        return false; // explicitly marked unavailable
+                    }
+                } catch (Exception e) {
+                    // fall through on repo failure
+                }
+                return true;
+            })
+            // 3. Daily workload limit check
+            .filter(t -> {
+                long dailyPeriods = timetableRepo.countTeacherPeriodsOnDay(t.getId(), academicYearId, day);
+                return dailyPeriods < maxPeriodsPerDay;
+            })
+            // 4. Weekly workload limit check
+            .filter(t -> {
+                if (t.getMaxWeeklyHours() == null) return true;
+                Integer weeklyMinutes = timetableRepo.calculateTeacherWeeklyMinutes(t.getId(), academicYearId, null);
+                int projectedHours = ((weeklyMinutes != null ? weeklyMinutes : 0) + neededMinutes) / 60;
+                return projectedHours <= t.getMaxWeeklyHours();
+            })
             .toList();
+    }
+
+    /**
+     * Get available batches for a specific division, day + time slot.
+     * Filters out batches that are already booked at that time.
+     * Checks conflicts across all semesters in the same series (odd or even).
+     */
+    public List<Batch> getAvailableBatches(
+        Long divisionId,
+        com.College.timetable.Entity.DayOfWeek day,
+        Long slotId,
+        Long academicYearId,
+        Semester semester
+    ) {
+        // Get all batches for this division
+        List<Batch> divisionBatches = batchRepository.findAll().stream()
+            .filter(b -> b.getDivision() != null && b.getDivision().getId().equals(divisionId))
+            .toList();
+
+        // Get all booked batch IDs for this day + slot + academic year (DRAFT + PUBLISHED)
+        // Check conflicts across all semesters in the same series (odd or even)
+        List<Long> bookedBatchIds = timetableRepo.findAll().stream()
+            .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+            .filter(e -> e.getDayOfWeek() == day)
+            .filter(e -> e.getTimeSlot() != null && e.getTimeSlot().getId().equals(slotId))
+            .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+            .filter(e -> e.getSemester() != null && semester != null && semester.isSameSeries(e.getSemester()))
+            .map(e -> e.getBatch() != null ? e.getBatch().getId() : null)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList();
+
+        // Filter out booked batches
+        return divisionBatches.stream()
+            .filter(b -> !bookedBatchIds.contains(b.getId()))
+            .toList();
+    }
+
+    /**
+     * Get aggregated teacher workload hours for all teachers in an academic year.
+     * Returns a Map of Teacher ID -> Allocated Hours (duration in minutes / 60).
+     */
+    public java.util.Map<Long, Double> getTeacherWorkloads(Long academicYearId) {
+        List<Object[]> results = timetableRepo.getTeacherWorkloadMinutes(academicYearId);
+        java.util.Map<Long, Double> workloads = new java.util.HashMap<>();
+        for (Object[] row : results) {
+            Long teacherId = (Long) row[0];
+            Number minutes = (Number) row[1];
+            double hours = minutes != null ? minutes.doubleValue() / 60.0 : 0.0;
+            workloads.put(teacherId, hours);
+        }
+        return workloads;
+    }
+
+    /**
+     * Get aggregated room booking counts for all rooms in an academic year.
+     * Returns a Map of Room ID -> Total Booking Count.
+     */
+    public java.util.Map<Long, Long> getRoomUtilizations(Long academicYearId) {
+        List<Object[]> results = timetableRepo.getRoomBookingCounts(academicYearId);
+        java.util.Map<Long, Long> utilizations = new java.util.HashMap<>();
+        for (Object[] row : results) {
+            Long roomId = (Long) row[0];
+            Long count = (Long) row[1];
+            utilizations.put(roomId, count != null ? count : 0L);
+        }
+        return utilizations;
+    }
+
+    /**
+     * Get aggregated global slot occupancy density for an academic year.
+     * Returns a Map of "DAY_slotId" -> Count of parallel classes running across all divisions.
+     */
+    public java.util.Map<String, Long> getSlotDensity(Long academicYearId) {
+        List<Object[]> results = timetableRepo.getGlobalSlotBookingCounts(academicYearId);
+        java.util.Map<String, Long> density = new java.util.HashMap<>();
+        for (Object[] row : results) {
+            com.College.timetable.Entity.DayOfWeek day = (com.College.timetable.Entity.DayOfWeek) row[0];
+            Long slotId = (Long) row[1];
+            Long count = (Long) row[2];
+            if (day != null && slotId != null) {
+                density.put(day.name() + "_" + slotId, count != null ? count : 0L);
+            }
+        }
+        return density;
     }
 }

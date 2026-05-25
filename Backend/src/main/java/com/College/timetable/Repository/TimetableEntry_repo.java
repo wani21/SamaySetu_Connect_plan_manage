@@ -101,7 +101,6 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
             AND t.dayOfWeek = :day
             AND t.timeSlot.id = :timeSlotId
             AND t.academicYear.id = :academicYearId
-            AND t.labSessionGroup IS NULL
             AND (:excludeId IS NULL OR t.id != :excludeId)
             """)
         boolean isTeacherBooked(
@@ -134,7 +133,7 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
 
         /**
          * Check if division already has a class at this day + slot + year
-         * Excludes lab session entries (division splits into batches — intentional parallel)
+         * Checks all entries (theory or labs)
          */
         @Query("""
             SELECT COUNT(t) > 0 FROM TimetableEntry t
@@ -142,11 +141,29 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
             AND t.dayOfWeek = :day
             AND t.timeSlot.id = :timeSlotId
             AND t.academicYear.id = :academicYearId
-            AND t.labSessionGroup IS NULL
             AND (:excludeId IS NULL OR t.id != :excludeId)
             """)
         boolean isDivisionBooked(
             @Param("divisionId") Long divisionId,
+            @Param("day") DayOfWeek day,
+            @Param("timeSlotId") Long timeSlotId,
+            @Param("academicYearId") Long academicYearId,
+            @Param("excludeId") Long excludeId
+        );
+
+        /**
+         * Check if batch is already booked at this day + slot + year
+         */
+        @Query("""
+            SELECT COUNT(t) > 0 FROM TimetableEntry t
+            WHERE t.batch.id = :batchId
+            AND t.dayOfWeek = :day
+            AND t.timeSlot.id = :timeSlotId
+            AND t.academicYear.id = :academicYearId
+            AND (:excludeId IS NULL OR t.id != :excludeId)
+            """)
+        boolean isBatchBooked(
+            @Param("batchId") Long batchId,
             @Param("day") DayOfWeek day,
             @Param("timeSlotId") Long timeSlotId,
             @Param("academicYearId") Long academicYearId,
@@ -372,6 +389,25 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
             @Param("academicYearId") Long academicYearId
         );
         
+        @Query("SELECT te.teacher.id, COALESCE(SUM(ts.durationMinutes), 0) FROM TimetableEntry te " +
+               "JOIN te.timeSlot ts " +
+               "WHERE te.academicYear.id = :academicYearId " +
+               "AND te.status != 'ARCHIVED' " +
+               "GROUP BY te.teacher.id")
+        List<Object[]> getTeacherWorkloadMinutes(@Param("academicYearId") Long academicYearId);
+
+        @Query("SELECT te.room.id, COUNT(te) FROM TimetableEntry te " +
+               "WHERE te.academicYear.id = :academicYearId " +
+               "AND te.status != 'ARCHIVED' " +
+               "GROUP BY te.room.id")
+        List<Object[]> getRoomBookingCounts(@Param("academicYearId") Long academicYearId);
+
+        @Query("SELECT te.dayOfWeek, te.timeSlot.id, COUNT(te) FROM TimetableEntry te " +
+               "WHERE te.academicYear.id = :academicYearId " +
+               "AND te.status != 'ARCHIVED' " +
+               "GROUP BY te.dayOfWeek, te.timeSlot.id")
+        List<Object[]> getGlobalSlotBookingCounts(@Param("academicYearId") Long academicYearId);
+
         // Keep the old method names for backward compatibility but delegate to new methods
         default List<TimetableEntry> findPublishedByProfessorAndSemester(
             Long professorId, Long academicYearId, com.College.timetable.Entity.Semester semester) {

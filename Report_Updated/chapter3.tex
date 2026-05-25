@@ -1,0 +1,152 @@
+\newpage
+\chapter{Problem Definition and Scope}
+
+\section{Problem Statement}
+
+Academic timetable preparation in educational institutions is a high-stakes administrative activity that combines combinatorial complexity with strict correctness requirements. In a typical engineering college, the coordinator must assign every course of every division to a specific teacher, room, day, and time slot while simultaneously respecting a long list of constraints: no teacher or room can be double-booked, each division has a single time-slot template, laboratory sessions must use laboratory rooms sized appropriately for the batch, faculty workload must respect minimum and maximum weekly hour limits, daily teaching periods must stay below an institutional cap, and scheduled slots must not overlap designated break periods.
+
+In the absence of a dedicated platform, this process is typically performed using spreadsheet software or word-processing templates. Such tools offer flexibility but no automated validation. The academic coordinator manually checks each entry against every applicable rule, and errors --- overlapping teacher assignments, double-booked rooms, laboratories over capacity, ignored break slots, exceeded weekly hour limits --- are often discovered only after the timetable has been distributed. Each discovered error triggers a revision cycle that ripples across related timetables, consumes coordinator time, and erodes institutional trust in the published schedule.
+
+Manual preparation also limits \textbf{adaptability}: mid-semester changes such as faculty leave, newly-added electives, or room maintenance force partial regeneration of multiple interconnected timetables. Additionally, the absence of a centralised digital source of truth means that faculty and students often rely on printed notices or informal channels (email, WhatsApp), leading to inconsistent versions of the ``same'' timetable circulating simultaneously.
+
+The problem addressed by the SamaySetu project is therefore:
+
+\textit{To design, develop, and deploy a reliable, role-aware, web-based timetable management system that eliminates the mechanical errors of manual scheduling, provides real-time transparent access to published timetables for all stakeholders, and supports the full lifecycle of an academic timetable --- from master-data entry, through draft construction, conflict-aware editing, pre-publish validation, publication with caching, archival of past versions, and printable export.}
+
+\section{Goals and Objectives}
+
+The primary goal of SamaySetu is to provide MIT Academy of Engineering with a production-ready, institutionally deployable timetable management platform that is significantly faster, more reliable, and more transparent than spreadsheet-based alternatives, while being extensible enough to support future enhancements.
+
+The specific objectives of the project are as follows:
+
+\begin{enumerate}
+    \item Build a centralised relational data model for the institution's academic structure --- academic years, departments, courses, divisions, batches, rooms, time slots, and staff accounts --- that supports multiple years and semesters concurrently.
+    \item Develop a secure role-based access control system with four distinct roles (Administrator, Head of Department, Timetable Coordinator, Teacher), implemented using JSON Web Tokens (JWT) over Spring Security.
+    \item Implement a responsive, accessible, interactive web-based timetable builder that supports click-to-add, click-to-edit, drag-and-drop movement, drag-to-swap, semester filtering, copy-from-division, and clear-draft operations.
+    \item Implement an eight-point conflict detection engine that enforces break protection, teacher uniqueness, room uniqueness, division uniqueness, teacher daily period limits, teacher weekly hour limits (using actual slot durations), room capacity, and room-course-type matching. All conflicts must be reported in a single response with human-readable messages.
+    \item Implement a Lab Session Wizard that atomically creates the parallel batch entries for a laboratory session across two consecutive periods, linked through a shared lab session group that the conflict engine treats correctly.
+    \item Implement a pre-publish validation dashboard that distinguishes between blocking errors and informational warnings and prevents the administrator from publishing a timetable that violates blocking rules.
+    \item Implement publish / archive / re-publish workflows that preserve the full history of previously-published timetables, evict server-side caches correctly, and make the current published timetable available to teachers in real time.
+    \item Implement printable exports in PDF and Microsoft Excel formats for both division-wise and teacher-wise timetables, with institutional branding and appropriate visual styling (merged break rows, colour-coded laboratory cells).
+    \item Implement secondary staff-lifecycle features: CSV bulk upload, manual admin-initiated creation, teacher self-registration with college-email enforcement, email verification, admin approval queue, first-login password change, forgot-password flow, and account lockout after failed attempts.
+    \item Deploy the system in a configuration that supports production use: environment-driven configuration with no secrets in source control, PostgreSQL as the primary database, Redis as the read-path cache, and AWS as the target deployment environment.
+\end{enumerate}
+
+\section{Scope and Major Constraints}
+
+The scope of SamaySetu is the end-to-end management of the academic timetable for an engineering college, including all master data entities on which the timetable depends and all exports derived from it. The system supports multi-year operation, concurrent coordinators, and multiple roles with distinct permission sets. It does not, in the current version, include modules for attendance tracking, examination scheduling, student performance analytics, or learning-management integration; these are identified as future work.
+
+The system assumes that the academic coordinator has access to accurate master data --- correct course lists, up-to-date faculty records, accurate student division strengths, and consistent room information. The quality of the generated timetable is inherently bounded by the quality of this input.
+
+The scheduling model treats the weekly schedule as the primary unit and assumes that the schedule is broadly repeating week-to-week throughout a semester. Week-specific exceptions (for example, a one-off special lecture) are supported via notes on individual entries but are not modelled as first-class recurrences.
+
+The platform is web-only in the current release. Native Android and iOS applications are not part of the current scope but are identified in the future-work section as a natural next step, likely to be implemented using React Native to reuse the existing component library.
+
+\section{Hardware and Software Requirements}
+
+\subsection{Hardware Requirements}
+
+\subsubsection{For End-Users (Faculty, Students, Administrators)}
+\begin{itemize}
+    \item Desktop or laptop computer with Intel Core i3 processor or equivalent.
+    \item 4 GB RAM (8 GB recommended for smoother interaction with the drag-and-drop builder).
+    \item 500 MB of free disk space for browser caches and offline downloads.
+    \item A stable broadband internet connection for real-time multi-user access.
+    \item Optional: a pointing device (mouse or trackpad); the drag-and-drop builder also supports touch devices.
+\end{itemize}
+
+\subsubsection{For Developers}
+\begin{itemize}
+    \item Workstation with Intel Core i5 processor (or AMD equivalent) or better.
+    \item 8 GB RAM minimum (16 GB recommended when running the backend, frontend, PostgreSQL, and Redis concurrently).
+    \item 30 GB free storage for source code, local databases, build artefacts, and container images.
+    \item High-speed internet connection for dependency downloads and deployments.
+\end{itemize}
+
+\subsubsection{For Production Hosting}
+\begin{itemize}
+    \item Backend: AWS EC2 instance (minimum t3.medium) behind an Application Load Balancer, with Auto Scaling Group configuration.
+    \item Database: AWS RDS PostgreSQL 17 (db.t3.medium) with automated backups and encryption-at-rest.
+    \item Cache: Managed Redis (AWS ElastiCache) or a Redis-compatible service with in-transit TLS.
+    \item Frontend: AWS Amplify with its built-in CDN.
+    \item Reliable network connectivity between all components.
+\end{itemize}
+
+\subsection{Software Requirements}
+
+\subsubsection{End-User Client}
+\begin{itemize}
+    \item Operating System: Windows 10 or higher, macOS 12 or higher, or any modern Linux distribution.
+    \item Browser: Google Chrome, Mozilla Firefox, Microsoft Edge, or Safari --- most recent two major versions.
+    \item JavaScript and cookies enabled.
+\end{itemize}
+
+\subsubsection{Frontend Stack}
+\begin{itemize}
+    \item React 18 with TypeScript 5.2 (strict mode).
+    \item Vite 5.1 as the build tool and dev server.
+    \item Tailwind CSS 3.4 for utility-first styling.
+    \item React Router 6.22 for client-side routing.
+    \item Zustand 4.5 with the persist middleware for global state management.
+    \item dnd-kit 6.3 for accessible drag-and-drop interaction.
+    \item Axios 1.6 for HTTP requests, configured with a JWT interceptor.
+    \item Framer Motion 11 for interface animation.
+    \item react-hot-toast 2.4 for user notifications.
+\end{itemize}
+
+\subsubsection{Backend Stack}
+\begin{itemize}
+    \item Java 17 (LTS).
+    \item Spring Boot 3.5.5 (Spring Web, Spring Data JPA, Spring Security, Spring Cache, Spring Mail, Spring Actuator).
+    \item Hibernate 6.x as the JPA provider, with HikariCP connection pooling.
+    \item Spring Data Redis with the Lettuce client.
+    \item JJWT 0.12.6 for JSON Web Token issuance and validation.
+    \item OpenPDF 1.3.35 for PDF export.
+    \item Apache POI 5.2.5 for Microsoft Excel export.
+    \item Project Lombok 1.18 for boilerplate reduction.
+    \item JavaMail through Spring Mail Starter for outbound email.
+\end{itemize}
+
+\subsubsection{Database}
+\begin{itemize}
+    \item PostgreSQL 17 for primary persistent storage.
+    \item Redis 6+ (or Memurai on Windows development machines) for read-path caching and rate-limiting buckets.
+\end{itemize}
+
+\subsubsection{Development Tools}
+\begin{itemize}
+    \item IDE: IntelliJ IDEA or Eclipse (backend); VS Code (frontend).
+    \item Version control: Git with GitHub as the remote; GitHub Actions for continuous integration.
+    \item API testing: Postman (a curated collection is shipped with the repository).
+    \item Database administration: pgAdmin 4.
+    \item Build tools: Maven 3.9 for the backend, npm 9 for the frontend.
+\end{itemize}
+
+\subsubsection{Security Tooling}
+\begin{itemize}
+    \item Spring Security with BCrypt password hashing.
+    \item Spring Security's method-level \texttt{@PreAuthorize} for controller-side role enforcement.
+    \item A custom \texttt{JWTRequestFilter} that extracts the bearer token, validates it, and populates the Spring Security context.
+    \item A custom \texttt{RateLimitFilter} for sliding-window per-IP rate limiting on authentication endpoints.
+    \item A global \texttt{InputSanitizationAdvice} that strips XSS-unsafe content from request bodies.
+    \item HSTS, X-Content-Type-Options, X-Frame-Options, and Cache-Control response headers.
+\end{itemize}
+
+\section{Expected Outcomes}
+
+The successful implementation of SamaySetu is expected to deliver the following measurable outcomes:
+
+\textbf{Reduction in timetable-preparation time.} The end-to-end preparation cycle --- including master-data entry, draft construction, conflict-aware editing, pre-publish validation, and publication --- is expected to be completed in a few days rather than the two to three weeks required by spreadsheet-based alternatives.
+
+\textbf{Elimination of mechanical scheduling errors.} Because the conflict engine validates every entry at the moment of placement, errors of the double-booking and capacity-mismatch classes are structurally impossible in a published timetable.
+
+\textbf{Centralised, authoritative schedule access.} Every faculty member, administrator, and (in future versions) student sees the same version of the published timetable, eliminating the circulation of divergent informal copies.
+
+\textbf{Auditability.} Administrator actions are logged in a structured \texttt{[AUDIT]} format suitable for review during institutional audits or accreditation assessments.
+
+\textbf{Exportable records.} Printable PDF and Excel exports are generated on demand for any division or any individual teacher, suitable for notice boards, archives, and institutional record-keeping.
+
+\textbf{Scalable architectural foundation.} The data model, the API contract, and the caching strategy have been designed so that future modules --- student portal, examination scheduling, attendance integration, analytics dashboards --- can be added without disturbing the core scheduling engine.
+
+\vspace{3mm}
+\hrule

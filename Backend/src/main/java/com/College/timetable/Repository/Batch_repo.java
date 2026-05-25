@@ -10,4 +10,5 @@ import com.College.timetable.Entity.Batch;
 @Repository
 public interface Batch_repo extends JpaRepository<Batch, Long> {
     List<Batch> findByDivisionId(Long divisionId);
+    long countByDivisionId(Long divisionId);
 }
