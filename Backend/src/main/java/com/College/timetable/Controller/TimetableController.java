@@ -46,6 +46,8 @@ public class TimetableController {
                 .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + "_" + semester + ".pdf")
                 .body(pdf);
         } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Error generating division PDF: " + e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -64,6 +66,8 @@ public class TimetableController {
                 .header("Content-Disposition", "attachment; filename=timetable_division_" + divisionId + "_" + semester + ".xlsx")
                 .body(excel);
         } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Error generating division Excel: " + e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -148,6 +152,24 @@ public class TimetableController {
     ) {
         return ResponseEntity.ok(
             timetableService.getDraftTimetable(divisionId, academicYearId, Semester.valueOf(semester))
+        );
+    }
+
+    /**
+     * GET /api/timetable/editable
+     * Get DRAFT and PUBLISHED timetable entries for admin editing
+     * This allows admins to continue editing even after publishing
+     * Filters by semester to show only entries for that specific semester
+     */
+    @GetMapping("/editable")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<TimetableEntry>> getEditableTimetable(
+        @RequestParam Long divisionId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        return ResponseEntity.ok(
+            timetableService.getEditableTimetable(divisionId, academicYearId, Semester.valueOf(semester))
         );
     }
 

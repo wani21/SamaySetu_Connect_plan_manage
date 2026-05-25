@@ -39,7 +39,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class TeacherEntity implements UserDetails{
 
 	@Id
@@ -125,6 +125,7 @@ public class TeacherEntity implements UserDetails{
 	private Timestamp createdAt;
 	
 	@Override
+	@com.fasterxml.jackson.annotation.JsonIgnore
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // Spring Security needs ROLE_ prefix internally
         return List.of(new SimpleGrantedAuthority("ROLE_" + role));
@@ -159,6 +160,7 @@ public class TeacherEntity implements UserDetails{
 	private List<TimetableEntry> timetableEntries;
 
 	@Override
+	@com.fasterxml.jackson.annotation.JsonIgnore
 	public String getUsername() {
 		return email;
 	}

@@ -211,6 +211,8 @@ export const timetableAPI = {
     api.get(`/api/timetable/teacher/${teacherId}?academicYearId=${academicYearId}`),
   getDraft: (divisionId: number, academicYearId: number, semester: string) =>
     api.get(`/api/timetable/draft?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}`),
+  getEditable: (divisionId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/editable?divisionId=${divisionId}&academicYearId=${academicYearId}&semester=${semester}`),
   // Admin write operations
   addEntry: (entryData: any) => api.post('/api/timetable/entries', entryData),
   updateEntry: (id: number, entryData: any) => api.put(`/api/timetable/entries/${id}`, entryData),

@@ -8,7 +8,8 @@ import {
   FiSettings,
   FiX,
   FiClock,
-  FiLayers
+  FiLayers,
+  FiDownload
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -53,7 +54,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     }
 
     // Timetable — all admin-layout roles
-    links.push({ to: '/admin/timetable', icon: FiCalendar, label: 'Timetable' });
+    links.push({ to: '/admin/timetable', icon: FiCalendar, label: 'Timetable Builder' });
+
+    // Timetable Export — ADMIN only
+    if (role === 'ADMIN') {
+      links.push({ to: '/admin/timetable-export', icon: FiDownload, label: 'Timetable Export' });
+    }
 
     return links;
   };

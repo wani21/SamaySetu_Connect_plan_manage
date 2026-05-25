@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FiPlus, FiTrash2, FiSend, FiArchive, FiAlertTriangle,
-  FiClock, FiBook, FiMapPin, FiEdit2, FiRefreshCw, FiDownload, FiMove,
+  FiClock, FiBook, FiEdit2, FiRefreshCw, FiDownload, FiMove,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import {
@@ -43,6 +43,20 @@ const DraggableEntryCard: React.FC<{
     zIndex: isDragging ? 50 : 'auto' as any,
   } : { opacity: 1 };
 
+  // Helper function to get professor initials (first letter of each name part)
+  const getProfessorInitials = (name: string): string => {
+    if (!name) return '';
+    return name
+      .split(' ')
+      .map(part => part.charAt(0).toUpperCase())
+      .join('');
+  };
+
+  const professorInitials = entry.teacher?.name ? getProfessorInitials(entry.teacher.name) : '-';
+  const roomLocation = entry.room?.roomNumber || '-';
+  const courseName = entry.course?.name || 'Unknown';
+  const batchName = entry.batch?.name || '';
+
   return (
     <div
       ref={setNodeRef}
@@ -59,21 +73,20 @@ const DraggableEntryCard: React.FC<{
       {!hasLabGroup && (
         <FiMove size={10} className="absolute top-1 left-1 text-gray-300 group-hover:text-gray-500" />
       )}
-      <p className={`font-semibold truncate ${isLab ? 'text-purple-900' : 'text-blue-900'}`}>
-        {entry.course?.name || 'Unknown'}
-      </p>
-      <div className="flex items-center gap-1 text-gray-600 mt-0.5">
-        <FiMapPin size={10} />
-        <span className="truncate">{entry.room?.roomNumber || '-'}</span>
-      </div>
-      <div className="flex items-center gap-1 text-gray-600">
-        <span className="truncate">{entry.teacher?.name || '-'}</span>
-      </div>
-      {entry.batch && (
-        <span className="inline-block mt-0.5 px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-[10px]">
-          {entry.batch?.name || 'Batch'}
-        </span>
+      
+      {/* Display format based on course type */}
+      {isLab ? (
+        // Lab format: Batch - Course Name - Professor Initials - Room Location
+        <p className={`font-semibold truncate text-purple-900`}>
+          {batchName} - {courseName} - {professorInitials} - {roomLocation}
+        </p>
+      ) : (
+        // Theory format: Course Name - Professor Initials - Room Location
+        <p className={`font-semibold truncate text-blue-900`}>
+          {courseName} - {professorInitials} - {roomLocation}
+        </p>
       )}
+      
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -330,7 +343,8 @@ export const TimetableManagementPage: React.FC = () => {
     if (!selectedDivisionId || !selectedYearId || !selectedSemester) return;
     try {
       setIsActionLoading(true);
-      const res = await timetableAPI.getDraft(selectedDivisionId, selectedYearId, selectedSemester);
+      // Use getEditable instead of getDraft to show both DRAFT and PUBLISHED entries
+      const res = await timetableAPI.getEditable(selectedDivisionId, selectedYearId, selectedSemester);
       setDraftEntries(Array.isArray(res.data) ? res.data : []);
     } catch {
       setDraftEntries([]);
@@ -735,10 +749,10 @@ export const TimetableManagementPage: React.FC = () => {
               <option value="">Select Year</option>
               {availableYears.map((year: number) => (
                 <option key={year} value={year}>
-                  {year === 1 ? 'First Year' :
-                   year === 2 ? 'Second Year' :
-                   year === 3 ? 'Third Year' :
-                   'Fourth Year'}
+                  {year === 1 ? 'First Year (FY)' :
+                   year === 2 ? 'Second Year (SY)' :
+                   year === 3 ? 'Third Year (TY)' :
+                   'Fourth Year (B.Tech)'}
                 </option>
               ))}
             </select>
@@ -805,11 +819,8 @@ export const TimetableManagementPage: React.FC = () => {
           {/* Entry count */}
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-600">
-              {draftEntries.length} draft {draftEntries.length === 1 ? 'entry' : 'entries'}
+              {draftEntries.length} {draftEntries.length === 1 ? 'entry' : 'entries'}
             </p>
-            <Button variant="primary" onClick={() => openAddModal()}>
-              <FiPlus className="mr-1" /> Add Entry
-            </Button>
           </div>
 
           {/* Timetable Grid */}
@@ -880,6 +891,17 @@ export const TimetableManagementPage: React.FC = () => {
                           const mergeEntry = cellEntries.find((e: any) => shouldMergeLabEntry(e, day, slotIdx));
                           const shouldSpan = !!mergeEntry;
 
+                          // Check if there's a theory lecture in this slot
+                          const hasTheoryLecture = cellEntries.some((e: any) => e.course?.courseType === 'THEORY');
+                          
+                          // Check if there are lab entries and get allocated batches
+                          const labEntries = cellEntries.filter((e: any) => e.course?.courseType === 'LAB');
+                          const allocatedBatchIds = labEntries.map((e: any) => e.batch?.id).filter(Boolean);
+                          const allBatchesAllocated = batches.length > 0 && allocatedBatchIds.length >= batches.length;
+                          
+                          // Determine if add button should be shown
+                          const showAddButton = !hasTheoryLecture && !allBatchesAllocated;
+
                           return (
                             <DroppableCell key={cellKey} day={day} slotId={slot.id} rowSpan={shouldSpan ? 2 : 1}>
                               {cellEntries.length > 0 ? (
@@ -893,21 +915,25 @@ export const TimetableManagementPage: React.FC = () => {
                                       onDeleteLabGroup={handleDeleteLabGroup}
                                     />
                                   ))}
-                                  <button
-                                    onClick={() => openAddModal(day, slot.id)}
-                                    className="w-full p-1 text-xs text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded transition-colors"
-                                  >
-                                    + Add
-                                  </button>
+                                  {showAddButton && (
+                                    <button
+                                      onClick={() => openAddModal(day, slot.id)}
+                                      className="w-full p-1 text-xs text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded transition-colors"
+                                    >
+                                      + Add
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => openAddModal(day, slot.id)}
-                                  className="w-full h-16 flex items-center justify-center text-gray-300 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
-                                  title="Add entry"
-                                >
-                                  <FiPlus size={20} />
-                                </button>
+                                showAddButton && (
+                                  <button
+                                    onClick={() => openAddModal(day, slot.id)}
+                                    className="w-full h-16 flex items-center justify-center text-gray-300 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+                                    title="Add entry"
+                                  >
+                                    <FiPlus size={20} />
+                                  </button>
+                                )
                               )}
                             </DroppableCell>
                           );
@@ -953,6 +979,7 @@ export const TimetableManagementPage: React.FC = () => {
           conflicts={conflicts}
           setConflicts={setConflicts}
           onSaved={fetchDraft}
+          formatTime={formatTime}
         />
       )}
 
@@ -1044,12 +1071,14 @@ interface EntryFormModalProps {
   conflicts: string[];
   setConflicts: (c: string[]) => void;
   onSaved: () => void;
+  formatTime: (t: string) => string;
 }
 
 const EntryFormModal: React.FC<EntryFormModalProps> = ({
   isOpen, onClose, editingEntry, divisionId, academicYearId,
   courses, teachers, rooms, timeSlots, batches,
   prefillDay, prefillSlotId, defaultSemester, conflicts, setConflicts, onSaved,
+  formatTime,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
@@ -1304,9 +1333,10 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
               Day <span className="text-red-500">*</span>
             </label>
             <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               value={form.dayOfWeek}
               onChange={(e) => handleChange('dayOfWeek', e.target.value)}
+              disabled={true}
               required
             >
               <option value="">Select Day</option>
@@ -1322,15 +1352,16 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
               Time Slot <span className="text-red-500">*</span>
             </label>
             <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               value={form.timeSlotId}
               onChange={(e) => handleChange('timeSlotId', e.target.value)}
+              disabled={true}
               required
             >
               <option value="">Select Time Slot</option>
-              {timeSlots.map((s: any) => (
+              {timeSlots.filter((s: any) => !s.isBreak).map((s: any) => (
                 <option key={s.id} value={s.id}>
-                  {s.slotName} ({s.startTime?.substring(0, 5)} - {s.endTime?.substring(0, 5)})
+                  {s.slotName} ({formatTime(s.startTime)} - {formatTime(s.endTime)})
                 </option>
               ))}
             </select>

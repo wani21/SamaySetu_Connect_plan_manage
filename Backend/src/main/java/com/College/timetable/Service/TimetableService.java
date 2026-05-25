@@ -380,6 +380,36 @@ public class TimetableService {
     }
 
     /**
+     * Get DRAFT and PUBLISHED timetable entries for admin editing
+     * This allows admins to continue editing even after publishing
+     * Filters by semester to show only entries for that specific semester
+     */
+    public List<TimetableEntry> getEditableTimetable(Long divisionId, Long academicYearId, Semester semester) {
+        // Fetch both DRAFT and PUBLISHED entries
+        List<TimetableEntry> draftEntries = timetableRepo
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.DRAFT, semester);
+        
+        List<TimetableEntry> publishedEntries = timetableRepo
+            .findByDivisionIdAndAcademicYearIdAndStatusAndSemesterOrderByDayOfWeekAscTimeSlotAsc(
+                divisionId, academicYearId, TimetableStatus.PUBLISHED, semester);
+        
+        // Combine both lists
+        List<TimetableEntry> allEntries = new java.util.ArrayList<>(draftEntries);
+        allEntries.addAll(publishedEntries);
+        
+        // Sort by day and time slot
+        allEntries.sort((a, b) -> {
+            int dayCompare = a.getDayOfWeek().compareTo(b.getDayOfWeek());
+            if (dayCompare != 0) return dayCompare;
+            if (a.getTimeSlot() == null || b.getTimeSlot() == null) return 0;
+            return a.getTimeSlot().getStartTime().compareTo(b.getTimeSlot().getStartTime());
+        });
+        
+        return allEntries;
+    }
+
+    /**
      * Clear all DRAFT entries for a division and semester — start fresh
      */
     @Transactional
