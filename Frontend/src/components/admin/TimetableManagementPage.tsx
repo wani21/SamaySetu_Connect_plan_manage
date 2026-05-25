@@ -1260,9 +1260,19 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
       timeSlotId: Number(form.timeSlotId),
       dayOfWeek: form.dayOfWeek,
     };
-    if (form.batchId) payload.batchId = Number(form.batchId);
-    if (form.semester) payload.semester = form.semester;
-    if (form.notes) payload.notes = form.notes;
+    
+    // Only add optional fields if they have valid values
+    if (form.batchId && String(form.batchId).trim() !== '') {
+      payload.batchId = Number(form.batchId);
+    }
+    if (form.semester && String(form.semester).trim() !== '') {
+      payload.semester = form.semester;
+    }
+    if (form.notes && String(form.notes).trim() !== '') {
+      payload.notes = form.notes;
+    }
+    
+    console.log('DEBUG Frontend: Submitting payload:', payload);
 
     try {
       setIsSaving(true);

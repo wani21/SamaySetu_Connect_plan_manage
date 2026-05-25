@@ -185,6 +185,9 @@ public class TimetableController {
     @PostMapping("/entries")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> addEntry(@Valid @RequestBody CreateTimetableEntryDTO dto) {
+        // Debug logging
+        System.out.println("DEBUG: Received DTO - batchId: " + dto.getBatchId() + ", labSessionGroupId: " + dto.getLabSessionGroupId());
+        
         try {
             TimetableEntry entry = timetableService.addEntry(dto);
             return ResponseEntity.status(HttpStatus.CREATED).body(entry);

@@ -139,21 +139,41 @@ public class TimetableService {
         entry.setStatus(TimetableStatus.DRAFT);  // Always starts as DRAFT
 
         // 5. Handle lab session entries
-        if (dto.getLabSessionGroupId() != null) {
-            LabSessionGroup group = labSessionGroupRepository.findById(dto.getLabSessionGroupId())
-                .orElseThrow(() -> new RuntimeException("Lab session group not found"));
-            entry.setLabSessionGroup(group);
+        // Check if this is a lab course by checking the course type
+        boolean isLabCourse = course.getCourseType() == com.College.timetable.Entity.CourseType.LAB;
+        
+        if (isLabCourse) {
+            System.out.println("DEBUG: Lab course detected - courseType: LAB");
             entry.setIsLabSession(true);
-
+            
+            // Set lab session group if provided (for wizard-created labs)
+            if (dto.getLabSessionGroupId() != null) {
+                System.out.println("DEBUG: Lab session group provided - labSessionGroupId: " + dto.getLabSessionGroupId());
+                LabSessionGroup group = labSessionGroupRepository.findById(dto.getLabSessionGroupId())
+                    .orElseThrow(() -> new RuntimeException("Lab session group not found"));
+                entry.setLabSessionGroup(group);
+            }
+            
+            // Set batch if provided (required for lab courses)
             if (dto.getBatchId() != null) {
+                System.out.println("DEBUG: Setting batch - batchId: " + dto.getBatchId());
                 Batch batch = batchRepository.findById(dto.getBatchId())
                     .orElseThrow(() -> new RuntimeException("Batch not found: " + dto.getBatchId()));
                 entry.setBatch(batch);
+            } else {
+                System.out.println("DEBUG: WARNING - Lab course but batchId is null");
             }
+        } else {
+            System.out.println("DEBUG: Theory course - courseType: " + course.getCourseType());
         }
 
         // 6. Save the primary entry
+        System.out.println("DEBUG: Before save - batch: " + (entry.getBatch() != null ? "Batch{id=" + entry.getBatch().getId() + ", name=" + entry.getBatch().getName() + "}" : "null") + 
+                          ", labSessionGroup: " + (entry.getLabSessionGroup() != null ? "LabSessionGroup{id=" + entry.getLabSessionGroup().getId() + "}" : "null"));
         TimetableEntry saved = timetableRepo.save(entry);
+        System.out.println("DEBUG: After save - Entry ID: " + saved.getId() + 
+                          ", batch: " + (saved.getBatch() != null ? "Batch{id=" + saved.getBatch().getId() + ", name=" + saved.getBatch().getName() + "}" : "null") + 
+                          ", labSessionGroup: " + (saved.getLabSessionGroup() != null ? "LabSessionGroup{id=" + saved.getLabSessionGroup().getId() + "}" : "null"));
 
         // 7. AUTO-BOOK NEXT CONSECUTIVE SLOT FOR LAB COURSES
         // Lab sessions occupy 2 truly consecutive lecture periods with NO break in between.
