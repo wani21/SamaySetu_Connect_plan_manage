@@ -240,10 +240,14 @@ export const timetableAPI = {
   copyFromDivision: (sourceDivisionId: number, targetDivisionId: number, academicYearId: number) =>
     api.post(`/api/timetable/copy?sourceDivisionId=${sourceDivisionId}&targetDivisionId=${targetDivisionId}&academicYearId=${academicYearId}`),
   // Availability filtering
-  getAvailableRooms: (day: string, slotId: number, academicYearId: number, semester: string, divisionId?: number) =>
-    api.get(`/api/timetable/available-rooms?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}${divisionId ? `&divisionId=${divisionId}` : ''}`),
-  getAvailableTeachers: (day: string, slotId: number, academicYearId: number, semester: string) =>
-    api.get(`/api/timetable/available-teachers?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}`),
+  getAvailableRooms: (day: string, slotId: number, academicYearId: number, semester: string, divisionId?: number, courseId?: number, batchId?: number) =>
+    api.get(`/api/timetable/available-rooms?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}${divisionId ? `&divisionId=${divisionId}` : ''}${courseId ? `&courseId=${courseId}` : ''}${batchId ? `&batchId=${batchId}` : ''}`),
+  getAvailableTeachers: (day: string, slotId: number, academicYearId: number, semester: string, courseId?: number) =>
+    api.get(`/api/timetable/available-teachers?day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}${courseId ? `&courseId=${courseId}` : ''}`),
+  getAvailableBatches: (divisionId: number, day: string, slotId: number, academicYearId: number, semester: string) =>
+    api.get(`/api/timetable/available-batches?divisionId=${divisionId}&day=${day}&slotId=${slotId}&academicYearId=${academicYearId}&semester=${semester}`),
+  getAnalytics: (academicYearId: number) =>
+    api.get(`/api/timetable/analytics?academicYearId=${academicYearId}`),
 };
 
 // Staff API (for restricted profile updates)

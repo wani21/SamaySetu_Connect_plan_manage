@@ -393,10 +393,8 @@ public class TimetableController {
     // ---------------------------------------------------------------
 
     /**
-     * GET /api/timetable/available-rooms?day=MONDAY&slotId=5&academicYearId=1&divisionId=1&semester=SEM_3
-     * Get available rooms for a specific day + time slot.
-     * Filters out rooms that are already booked at that time.
-     * Checks conflicts across all semesters in the same series (odd or even).
+     * GET /api/timetable/available-rooms?day=MONDAY&slotId=5&academicYearId=1&divisionId=1&semester=SEM_3&courseId=1&batchId=2
+     * Get available rooms for a specific day + time slot with smart filtering.
      */
     @GetMapping("/available-rooms")
     @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
@@ -405,19 +403,19 @@ public class TimetableController {
         @RequestParam Long slotId,
         @RequestParam Long academicYearId,
         @RequestParam(required = false) Long divisionId,
-        @RequestParam String semester
+        @RequestParam String semester,
+        @RequestParam(required = false) Long courseId,
+        @RequestParam(required = false) Long batchId
     ) {
         List<com.College.timetable.Entity.ClassRoom> available = timetableService.getAvailableRooms(
-            day, slotId, academicYearId, divisionId, com.College.timetable.Entity.Semester.valueOf(semester)
+            day, slotId, academicYearId, divisionId, com.College.timetable.Entity.Semester.valueOf(semester), courseId, batchId
         );
         return ResponseEntity.ok(available);
     }
 
     /**
-     * GET /api/timetable/available-teachers?day=MONDAY&slotId=5&academicYearId=1&semester=SEM_3
-     * Get available teachers for a specific day + time slot.
-     * Filters out teachers that are already assigned at that time or marked unavailable.
-     * Checks conflicts across all semesters in the same series (odd or even).
+     * GET /api/timetable/available-teachers?day=MONDAY&slotId=5&academicYearId=1&semester=SEM_3&courseId=1
+     * Get available teachers for a specific day + time slot with smart workload filtering.
      */
     @GetMapping("/available-teachers")
     @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
@@ -425,11 +423,49 @@ public class TimetableController {
         @RequestParam com.College.timetable.Entity.DayOfWeek day,
         @RequestParam Long slotId,
         @RequestParam Long academicYearId,
-        @RequestParam String semester
+        @RequestParam String semester,
+        @RequestParam(required = false) Long courseId
     ) {
         List<com.College.timetable.Entity.TeacherEntity> available = timetableService.getAvailableTeachers(
-            day, slotId, academicYearId, com.College.timetable.Entity.Semester.valueOf(semester)
+            day, slotId, academicYearId, com.College.timetable.Entity.Semester.valueOf(semester), courseId
         );
         return ResponseEntity.ok(available);
+    }
+
+    /**
+     * GET /api/timetable/available-batches?divisionId=1&day=MONDAY&slotId=5&academicYearId=1&semester=SEM_3
+     * Get available batches for a specific division, day + time slot.
+     */
+    @GetMapping("/available-batches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<List<com.College.timetable.Entity.Batch>> getAvailableBatches(
+        @RequestParam Long divisionId,
+        @RequestParam com.College.timetable.Entity.DayOfWeek day,
+        @RequestParam Long slotId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        List<com.College.timetable.Entity.Batch> available = timetableService.getAvailableBatches(
+            divisionId, day, slotId, academicYearId, com.College.timetable.Entity.Semester.valueOf(semester)
+        );
+        return ResponseEntity.ok(available);
+    }
+
+    /**
+     * GET /api/timetable/analytics?academicYearId=1
+     * Get aggregated teacher workload, room utilization, and slot density statistics.
+     */
+    @GetMapping("/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<Map<String, Object>> getAnalytics(@RequestParam Long academicYearId) {
+        var teacherWorkloads = timetableService.getTeacherWorkloads(academicYearId);
+        var roomUtilizations = timetableService.getRoomUtilizations(academicYearId);
+        var slotDensity = timetableService.getSlotDensity(academicYearId);
+
+        return ResponseEntity.ok(Map.of(
+            "teacherWorkloads", teacherWorkloads,
+            "roomBookingCounts", roomUtilizations,
+            "slotDensity", slotDensity
+        ));
     }
 }

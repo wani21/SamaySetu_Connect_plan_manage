@@ -1,0 +1,81 @@
+\newpage
+\chapter{Conclusion and Future Scope}
+
+\section{Conclusion}
+
+The \textbf{SamaySetu --- College Timetable Management System} has been successfully designed, developed, and tested as a full-stack web platform that addresses the long-standing administrative challenges of academic timetable preparation at MIT Academy of Engineering. The project set out with a clearly-defined institutional problem --- the error-proneness, opacity, and inflexibility of manual spreadsheet-based scheduling --- and delivers a production-grade solution that preserves the coordinator's expertise while delegating the mechanical bookkeeping of conflict prevention to software.
+
+At the architectural level, the platform is realised as a clean three-tier application. A React 18 single-page frontend, built with TypeScript and Vite, provides a responsive, role-aware, drag-and-drop-capable interface. A Spring Boot 3.5.5 REST backend running on Java 17 implements the complete business logic, including the eight-point conflict detection engine, the lab session atomic creation, the pre-publish validation dashboard, the publish-archive lifecycle with cache invalidation, and the server-side PDF and Excel export. A PostgreSQL 17 database provides durable storage for all master data and timetable entries across their full lifecycle, while Redis serves as the low-latency read-path cache for published timetables.
+
+At the functional level, the system supports the full administrative workflow: academic-year creation with automatic invariant maintenance, department-level copy-over between years, CSV-driven bulk staff upload with quote-aware parsing, course management with semester tagging, classroom management with capacity and type metadata, division management with time-slot profiles, teacher availability capture, interactive timetable construction with drag-and-drop semantics, atomic laboratory-session creation for parallel batches, comprehensive pre-publish validation, and printable PDF / Excel exports for both division and teacher views.
+
+At the security level, SamaySetu adopts a defence-in-depth posture. Authentication uses JSON Web Tokens with one-hour expiry and BCrypt-hashed passwords. Authorisation is enforced both at the URL level (Spring Security request matchers) and at the method level (\texttt{@PreAuthorize} annotations). Brute-force attempts are throttled at the filter chain by a per-IP sliding-window rate limiter, and accounts are automatically locked for fifteen minutes after five consecutive failed attempts. Cross-site scripting attempts are blocked by a global request-body sanitiser, and modern HTTP security headers --- HSTS, X-Frame-Options, X-Content-Type-Options, Cache-Control --- are applied to every response. Administrator-sensitive actions are captured in structured audit logs.
+
+At the operational level, the platform is configured through environment variables in production with no secrets committed to source control, continuously built through GitHub Actions, and deployable to AWS (EC2 behind an Application Load Balancer for the backend, Amplify for the frontend, RDS for PostgreSQL, ElastiCache for Redis). Both development and production profiles have been carefully separated so that local iteration does not require production credentials and production deployment cannot accidentally inherit development defaults.
+
+The primary objectives stated at the outset of the project --- reduction of manual timetable preparation time, elimination of common scheduling errors, centralised authoritative schedule access, auditability of administrator actions, printable exportable records, and a scalable architectural foundation --- have all been met. The project also produced, alongside the software itself, comprehensive technical documentation including this Major Project Report, a developer-oriented project bible, a seeded-data script for realistic demonstrations, and a Postman collection covering every REST endpoint.
+
+Perhaps the most significant outcome is non-technical. By choosing transparent rule-based conflict prevention over opaque algorithmic auto-generation, and by investing heavily in clear human-readable error messages, clean role separation, and production-grade security, the project demonstrates that student engineering work can attain the same standard of craft expected of professional software. The system is not a prototype; it is a platform that MITAOE could deploy and use.
+
+\section{Future Scope}
+
+While the current release of SamaySetu meets its stated objectives, several enhancements have been identified as worthwhile for future iterations. These are grouped into near-term, medium-term, and strategic horizons.
+
+\subsection{Near-Term Enhancements (within one semester of deployment)}
+
+\begin{itemize}
+    \item \textbf{Department-filtered course and room dropdowns in the timetable builder.} Currently the Course and Room selectors list every entity in the database. Filtering these by the selected division's department would shorten the dropdowns by a significant factor and prevent accidental cross-department assignments.
+
+    \item \textbf{Dedicated Faculty Timetables page.} A page that groups teachers by department and makes each teacher's published timetable accessible through a single click. All backend endpoints for this already exist; only the frontend surface needs to be added.
+
+    \item \textbf{Shared laboratory support.} A many-to-many relationship between classrooms and their permitted departments, so that a Hardware Lab owned by Mechanical Engineering can be offered in the Civil Engineering builder, but not in Computer Engineering's builder. This prevents inappropriate cross-department lab assignment at the UI level.
+
+    \item \textbf{Teacher load distribution.} An explicit \texttt{TeacherCourseLoad} entity that records how many hours each teacher is contracted to teach of each course. The pre-publish validation can then warn when the scheduled hours diverge from the allocated hours, giving the coordinator a second signal that complements the raw weekly-hour ceiling.
+
+    \item \textbf{Draft export.} Extending the PDF / Excel export endpoints to accept a \texttt{status} query parameter so that administrators can print their work-in-progress drafts for offline review before publishing.
+
+    \item \textbf{Asynchronous email dispatch.} Moving outbound email (verification, approval, password reset) into a \texttt{@Async} thread pool, so that Gmail SMTP latency does not affect the foreground request completion time.
+
+    \item \textbf{Flyway-managed schema migrations.} Capturing the current schema as a baseline migration, enabling Flyway, and switching \texttt{ddl-auto} to \texttt{validate} in production. This removes the remaining risk of accidental schema drift.
+\end{itemize}
+
+\subsection{Medium-Term Enhancements}
+
+\begin{itemize}
+    \item \textbf{Student-facing portal.} A read-only view for students, addressable by roll number and academic year, showing the weekly grid of their division. This eliminates the circulation of screenshot copies through informal channels.
+
+    \item \textbf{In-app notifications.} A bell icon with a structured inbox of events such as ``your timetable was updated'', ``your leave request was approved'', ``a new academic year has been published''. This requires a \texttt{notifications} table, either WebSocket push or polling delivery, and small UI additions.
+
+    \item \textbf{Constraint-solver-based auto-generation.} A second scheduling mode in which the administrator can request automatic generation of a candidate draft for an empty division, using a constraint-satisfaction solver such as Google OR-Tools or Choco Solver. The candidate draft is presented as editable; the administrator retains the authority to accept, reject, or modify before publishing. This combines the efficiency of automated generation with the transparency of human oversight.
+
+    \item \textbf{Room-course type strict mode.} Upgrading the current warning for mis-typed room assignments into a blocking error when the administrator opts into strict mode.
+
+    \item \textbf{Academic calendar support.} First-class modelling of holidays, exam weeks, and special-event days that modify the baseline Monday-to-Saturday rhythm.
+
+    \item \textbf{Bulk time-slot presets.} One-click creation of a complete TYPE\_1 or TYPE\_2 profile of ten slots, eliminating one of the more tedious parts of initial academic-year setup.
+\end{itemize}
+
+\subsection{Strategic Enhancements}
+
+\begin{itemize}
+    \item \textbf{Mobile applications.} Native Android and iOS applications built with React Native, reusing the existing design system and component library, providing read-only schedule viewing for teachers and students along with push notifications for schedule changes.
+
+    \item \textbf{Multi-tenant architecture.} Generalising SamaySetu from an MITAOE-only platform into a multi-college Software-as-a-Service offering. Each college would operate as an isolated tenant with its own data, accessible through a tenant-aware subdomain. This requires tenant-scoped database design, tenant-aware authentication, and per-tenant configuration.
+
+    \item \textbf{Analytics dashboards.} Visualisation of institutional metrics: classroom utilisation trends, teacher workload distribution, conflict frequency by day-of-week, and lab-session congestion. Useful both for institutional reporting and for incremental improvement of the scheduling process itself.
+
+    \item \textbf{AI-assisted schedule adjustment.} When a teacher calls in sick, propose three swap options that respect every hard constraint, ranked by minimum disruption to other faculty. This does not require full auto-generation; it only requires a constraint-aware search over the existing schedule.
+
+    \item \textbf{Integration with adjacent institutional systems.} Calendar subscription export (iCal) so faculty timetables appear in Google Calendar and Outlook; attendance-system integration so each class's attendance ticks the corresponding entry; learning-management-system synchronisation so course materials are surfaced in the student timetable.
+
+    \item \textbf{Multi-campus and fault-tolerant deployment.} Migration from the current single-EC2 baseline to an auto-scaling-group behind a multi-availability-zone load balancer with cross-AZ RDS replication, elastic Redis, and CI/CD pipelines with automatic rollback.
+\end{itemize}
+
+\subsection{Closing Perspective}
+
+The SamaySetu platform, in its current release, establishes a clean foundation --- a well-modelled domain, a secure API, a responsive role-aware frontend, a correct conflict-prevention engine, and a production-grade deployment story. Each of the enhancements listed above is a natural extension of this foundation; none of them requires revisiting the fundamental architecture. That is, in the team's view, the strongest indicator that the system has been designed well: the platform is ready to grow.
+
+The project has provided the four members of the team with substantial hands-on exposure to the full range of disciplines involved in modern application engineering --- domain modelling, relational design, transactional services, constraint reasoning, security engineering, caching, frontend state management, accessible interaction design, build tooling, continuous integration, and cloud deployment. We expect the methodology, habits of mind, and engineering craft developed during SamaySetu to compound over the remainder of our undergraduate programme and into our professional careers.
+
+\vspace{10mm}
+\hrule

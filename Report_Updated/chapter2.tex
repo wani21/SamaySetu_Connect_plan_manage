@@ -1,0 +1,55 @@
+\newpage
+\chapter{Literature Review}
+
+\section{Related Work and State of the Art}
+
+Automated academic timetable generation has been an active area of research for more than three decades, driven by the inherent combinatorial difficulty of the scheduling problem and its direct impact on institutional efficiency. Recent literature shows a clear progression from rule-based heuristics toward metaheuristic optimisation, artificial-intelligence-driven adaptability, and integrated campus-management platforms.
+
+\textbf{Alonge and Sakpere (2025)} proposed an automated timetable scheduling system based on the Non-dominated Sorting Genetic Algorithm II (NSGA-II) for educational institutions. Their study formulated the problem as a multi-objective optimisation over classroom availability, faculty workload balance, and time-slot allocation. The NSGA-II engine produced multiple Pareto-optimal schedules that allowed administrators to select among equivalent-quality alternatives. Their reported results showed significant reductions in scheduling conflicts and improvements in resource utilisation compared to first-fit heuristics.
+
+\textbf{Diallo and Tudose (2024)} focused on optimising the teaching activity schedule of a university faculty using mathematical programming formulations. Their work emphasised that poor scheduling causes faculty fatigue, student dissatisfaction, and uneven utilisation of infrastructure. The paper showed that integer-programming-based optimisation, given suitably modelled constraints, can produce measurably better workload distributions than heuristic approaches while respecting all institutional requirements.
+
+\textbf{Kavade et al. (2023)} presented a Smart Timetable System leveraging artificial-intelligence and machine-learning techniques. Their approach learned from historical scheduling data to propose new schedules that recurring institutional patterns tend to prefer. The authors demonstrated that AI-driven scheduling can improve adaptability over time, although they acknowledged the method's reliance on sizeable historical datasets --- a limitation for newly-established institutions with no prior records.
+
+\textbf{Yusop (2024)} conducted a systematic literature review on timetable optimisation in education with a specific focus on work--life balance for faculty. The review found that most existing research evaluates schedules primarily against institutional efficiency metrics (room utilisation, elimination of conflicts) while under-representing human factors such as preferred teaching hours, commuting considerations, and distribution of lectures across the working week. The author argued that modern timetable systems must integrate human-centric soft constraints alongside the classical hard constraints.
+
+\textbf{Abhishek et al. (2024)} proposed a Smart Timetable Scheduler and Campus Management System in which timetable generation is embedded in a broader institutional platform encompassing centralised data management, automated conflict detection, and real-time schedule access for both faculty and students. Their case study suggested that placing timetable scheduling within a campus-management context meaningfully improves transparency, reduces communication delays, and increases administrative efficiency compared to standalone scheduling tools.
+
+Collectively, the reviewed literature establishes three consistent findings: (i) modern timetable generation has moved decisively beyond naive rule-based approaches toward optimisation-driven and learning-based approaches; (ii) integration of scheduling into broader campus management frameworks yields tangible institutional benefits; and (iii) human-centric soft constraints are increasingly recognised as first-class concerns rather than afterthoughts.
+
+\section{Limitations of Existing Techniques}
+
+While the reviewed systems advance the state of the art, each exhibits limitations that restrict direct institutional adoption.
+
+\textbf{Computational overhead of metaheuristics.} Methods such as NSGA-II deliver high-quality schedules but require careful parameter tuning and non-trivial computational resources at scale. For large institutions with hundreds of faculty, dozens of divisions, and thousands of candidate assignments, achieving acceptable runtime often demands specialised infrastructure beyond what a typical college IT department maintains.
+
+\textbf{Data dependence of AI methods.} Machine-learning-based timetable systems require substantial historical data to learn effectively. Newly-established colleges, or colleges introducing major curriculum reforms, cannot provide such data and therefore cannot benefit from these techniques until several semesters of baseline operation accumulate.
+
+\textbf{Hard-constraint bias.} The majority of automated timetable research optimises primarily for hard constraints (no double-booking, capacity fit, working-hours compliance) and treats soft constraints (preferred teaching hours, faculty work--life balance, balanced daily distribution) as secondary. As Yusop (2024) observed, this bias can produce schedules that are technically feasible but operationally poor.
+
+\textbf{Lack of end-to-end integration.} Many research prototypes solve the scheduling problem in isolation but do not address the surrounding institutional workflow: staff onboarding, role-based access control, real-time updates, audit logging, export in printable formats, mobile-accessible interfaces, and integration with existing institutional data. Without these, the generated schedule sits in a research artefact and never reaches the classroom.
+
+\textbf{Opaque auto-generation.} A subtler limitation is that automated generators do not always produce decisions that the academic coordinator can justify to dissatisfied faculty. When a teacher asks ``why am I scheduled Saturday afternoon?'', an answer of ``the genetic algorithm converged on this solution'' is institutionally unsatisfactory. Transparency of the scheduling decision matters in practice.
+
+\textbf{Scalability to real deployments.} Research prototypes often demonstrate small-scale feasibility but do not address horizontal scaling, concurrent editing, caching, failover, or long-running session state --- engineering concerns that become critical when the system is used daily by dozens of coordinators and hundreds of faculty.
+
+\section{Discussion and Future Direction}
+
+The literature review reveals a clear gap between algorithmic research on automated timetable generation and production-ready timetable management platforms. Research papers primarily compete on optimisation quality, while institutions need \textbf{correctness, transparency, speed, integration, auditability, and accessibility} --- properties that are orthogonal to optimisation quality alone.
+
+An additional gap lies in the \textbf{absence of a unified platform} that simultaneously addresses conflict prevention, role-based access, centralised master data management, real-time visualisation, printable exports, and scalable web-based delivery. Most existing tools address only a subset of these requirements.
+
+The SamaySetu platform is intentionally positioned to address this gap. Rather than competing with optimisation-driven auto-generators on algorithmic quality, SamaySetu provides an interactive builder that combines the coordinator's institutional judgement with strict, transparent, rule-based conflict prevention. Each conflict raised by the system carries a human-readable reason (for example, \textit{``Teacher conflict: Prof. X is already assigned to another class on Monday at 10:00''}) so the coordinator understands exactly why a placement was rejected. This transparency contrasts sharply with the opacity of metaheuristic auto-generators.
+
+Future work, discussed in Chapter 6, includes the possibility of layering a CSP-based or OR-Tools-based auto-generation engine \textit{on top of} the existing platform --- an arrangement in which the engine produces candidate schedules and the coordinator retains the authority to accept, reject, or modify them inside the same interface. This would combine algorithmic efficiency with human oversight, addressing both research-focused and institutional-workflow requirements within a single architecture.
+
+\section{Concluding Remarks}
+
+The literature surveyed confirms that academic timetable scheduling has progressed substantially from manual and spreadsheet-based approaches toward optimisation-driven and AI-enhanced automated systems. Genetic algorithms, integer programming, and machine learning have each demonstrated measurable improvements over manual baselines on specific metrics.
+
+At the same time, the analysis exposes systemic limitations. Computational cost, data dependence, hard-constraint bias, absence of end-to-end integration, opacity of automated decisions, and poor scalability to real deployments collectively prevent most research systems from transitioning into daily institutional use.
+
+SamaySetu has been designed with awareness of both the strengths identified in the literature and the gaps that remain. By combining a transparent, rule-based conflict engine, a role-aware web interface, centralised master data, cached published timetables, and production-grade security, the platform offers a pragmatic, institutionally deployable alternative that complements rather than competes with existing research directions. This chapter thus establishes the theoretical and architectural justification for the design choices elaborated in the following chapters.
+
+\vspace{10mm}
+\hrule

@@ -167,6 +167,21 @@ export const TimetableManagementPage: React.FC = () => {
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [conflicts, setConflicts] = useState<string[]>([]);
 
+  // Analytics and Dashboards state (Phase 2)
+  const [analytics, setAnalytics] = useState<any>({
+    teacherWorkloads: {},
+    roomBookingCounts: {},
+    slotDensity: {},
+  });
+  const [activeAnalyticsTab, setActiveAnalyticsTab] = useState<'unscheduled' | 'heatmap' | 'slotOccupancy'>('unscheduled');
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(true);
+  const [selectedAnalyticsSlot, setSelectedAnalyticsSlot] = useState<{ day: string; slotId: number } | null>(null);
+
+  const [slotFreeRooms, setSlotFreeRooms] = useState<any[]>([]);
+  const [slotFreeTeachers, setSlotFreeTeachers] = useState<any[]>([]);
+  const [slotFreeBatches, setSlotFreeBatches] = useState<any[]>([]);
+  const [isLoadingSlotDetails, setIsLoadingSlotDetails] = useState(false);
+
   // Filter time slots by the selected division's slot type (TYPE_1, TYPE_2, etc.)
   // This prevents showing duplicate slots when multiple types exist in the database.
   const filteredTimeSlots = useMemo(() => {
@@ -220,6 +235,57 @@ export const TimetableManagementPage: React.FC = () => {
     }
     return filtered.sort((a, b) => a.name.localeCompare(b.name));
   }, [divisions, selectedDepartmentId, selectedYear]);
+
+  // Phase 2: Compute courses for the selected division and semester
+  const divisionCourses = useMemo(() => {
+    const selectedDiv = divisions.find((d: any) => d.id === selectedDivisionId);
+    if (!selectedDiv) return [];
+    return courses.filter((c: any) =>
+      (!selectedDiv.department || (c.department && c.department.id === selectedDiv.department.id)) &&
+      (c.year === selectedDiv.year) &&
+      (!selectedSemester || c.semester === selectedSemester)
+    );
+  }, [courses, divisions, selectedDivisionId, selectedSemester]);
+
+  // Phase 2: Calculate scheduled vs unscheduled allocations for division courses
+  const courseAllocationStats = useMemo(() => {
+    return divisionCourses.map((c: any) => {
+      const isLab = c.courseType === 'LAB';
+      const scheduledCount = draftEntries.filter((e: any) => e.course?.id === c.id).length;
+      
+      let progress = 0;
+      let targetText = '';
+      let scheduledText = '';
+      
+      if (isLab) {
+        // Lab course: check how many unique batches are allocated
+        const allocatedBatches = new Set(
+          draftEntries
+            .filter((e: any) => e.course?.id === c.id && e.batch)
+            .map((e: any) => e.batch.id)
+        ).size;
+        progress = batches.length > 0 ? (allocatedBatches / batches.length) * 100 : 100;
+        targetText = `${batches.length} Batches`;
+        scheduledText = `${allocatedBatches} Batches`;
+      } else {
+        // Theory course: count hours scheduled
+        progress = c.hoursPerWeek > 0 ? (scheduledCount / c.hoursPerWeek) * 100 : 100;
+        targetText = `${c.hoursPerWeek} Hours`;
+        scheduledText = `${scheduledCount} Hours`;
+      }
+      
+      return {
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        isLab,
+        progress: Math.min(progress, 100),
+        scheduledText,
+        targetText,
+        isComplete: progress >= 100,
+      };
+    });
+  }, [divisionCourses, draftEntries, batches]);
 
   // Pre-filled day/slot when clicking a cell
   const [prefillDay, setPrefillDay] = useState<string | null>(null);
@@ -356,6 +422,63 @@ export const TimetableManagementPage: React.FC = () => {
   useEffect(() => {
     fetchDraft();
   }, [fetchDraft]);
+
+  // Fetch Analytics DTO (Phase 2)
+  const fetchAnalytics = useCallback(async () => {
+    if (!selectedYearId) return;
+    try {
+      const res = await timetableAPI.getAnalytics(selectedYearId);
+      setAnalytics(res.data || { teacherWorkloads: {}, roomBookingCounts: {}, slotDensity: {} });
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+    }
+  }, [selectedYearId]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [selectedYearId, draftEntries, fetchAnalytics]);
+
+  // Load live slot occupancy details when slot selection changes (Phase 2)
+  useEffect(() => {
+    if (!selectedAnalyticsSlot || !selectedYearId || !selectedSemester) return;
+    
+    const loadSlotDetails = async () => {
+      try {
+        setIsLoadingSlotDetails(true);
+        const [roomsRes, teachersRes, batchesRes] = await Promise.all([
+          timetableAPI.getAvailableRooms(
+            selectedAnalyticsSlot.day,
+            selectedAnalyticsSlot.slotId,
+            selectedYearId,
+            selectedSemester,
+            selectedDivisionId || undefined
+          ),
+          timetableAPI.getAvailableTeachers(
+            selectedAnalyticsSlot.day,
+            selectedAnalyticsSlot.slotId,
+            selectedYearId,
+            selectedSemester
+          ),
+          selectedDivisionId ? timetableAPI.getAvailableBatches(
+            selectedDivisionId,
+            selectedAnalyticsSlot.day,
+            selectedAnalyticsSlot.slotId,
+            selectedYearId,
+            selectedSemester
+          ) : Promise.resolve({ data: [] }),
+        ]);
+        setSlotFreeRooms(Array.isArray(roomsRes.data) ? roomsRes.data : []);
+        setSlotFreeTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
+        setSlotFreeBatches(Array.isArray(batchesRes.data) ? batchesRes.data : []);
+      } catch (err) {
+        console.error('Failed to load slot details:', err);
+      } finally {
+        setIsLoadingSlotDetails(false);
+      }
+    };
+
+    loadSlotDetails();
+  }, [selectedAnalyticsSlot, selectedYearId, selectedSemester, selectedDivisionId]);
 
   // ─── Grid lookup ────────────────────────────────────────────────────
   const getEntriesForCell = useCallback((day: string, slotId: number) =>
@@ -816,6 +939,230 @@ export const TimetableManagementPage: React.FC = () => {
         </Card>
       ) : (
         <>
+          {/* Collapsible Analytics Dashboard (Phase 2) */}
+          <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm">
+            <div
+              className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+              onClick={() => setIsAnalyticsOpen(!isAnalyticsOpen)}
+            >
+              <div className="flex items-center gap-2">
+                <FiRefreshCw className={`text-primary-800 ${isActionLoading ? 'animate-spin' : ''}`} />
+                <span className="font-semibold text-gray-800 text-sm">Timetable Analytics & Dashboard</span>
+              </div>
+              <span className="text-xs text-primary-700 font-medium hover:underline">
+                {isAnalyticsOpen ? 'Collapse ▴' : 'Expand ▾'}
+              </span>
+            </div>
+
+            {isAnalyticsOpen && (
+              <div className="p-4 bg-white space-y-4">
+                {/* Tabs Selector */}
+                <div className="flex border-b border-gray-200 text-xs">
+                  <button
+                    onClick={() => setActiveAnalyticsTab('unscheduled')}
+                    className={`pb-2 px-4 font-semibold transition-all ${
+                      activeAnalyticsTab === 'unscheduled'
+                        ? 'border-b-2 border-primary-600 text-primary-900'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Unscheduled Subjects Tracker
+                  </button>
+                  <button
+                    onClick={() => setActiveAnalyticsTab('heatmap')}
+                    className={`pb-2 px-4 font-semibold transition-all ${
+                      activeAnalyticsTab === 'heatmap'
+                        ? 'border-b-2 border-primary-600 text-primary-900'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Timetable Density Heat Map
+                  </button>
+                  <button
+                    onClick={() => setActiveAnalyticsTab('slotOccupancy')}
+                    className={`pb-2 px-4 font-semibold transition-all ${
+                      activeAnalyticsTab === 'slotOccupancy'
+                        ? 'border-b-2 border-primary-600 text-primary-900'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Live Slot Occupancy Drawer
+                  </button>
+                </div>
+
+                {/* Tab content */}
+                {activeAnalyticsTab === 'unscheduled' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {courseAllocationStats.length === 0 ? (
+                      <p className="col-span-full text-xs text-gray-500 italic text-center py-4">No courses configured for this branch/year.</p>
+                    ) : (
+                      courseAllocationStats.map((stat: any) => (
+                        <div key={stat.id} className="border border-gray-100 rounded-lg p-3 bg-gray-50 shadow-sm flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="font-semibold text-gray-800 text-xs truncate max-w-[180px]" title={stat.name}>{stat.name}</span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${stat.isLab ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                                {stat.isLab ? 'LAB' : 'THEORY'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+                              <span>Scheduled: {stat.scheduledText}</span>
+                              <span>Target: {stat.targetText}</span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-1.5 rounded-full transition-all duration-300 ${stat.isComplete ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`}
+                              style={{ width: `${stat.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {activeAnalyticsTab === 'heatmap' && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-3">Global slot utilization density (busy counts across all divisions):</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-xs min-w-[700px]">
+                        <thead>
+                          <tr className="bg-gray-100 text-gray-700 font-semibold border-b border-gray-200">
+                            <th className="p-2 border border-gray-200 w-24">Slot</th>
+                            {DAYS.map(day => <th key={day} className="p-2 border border-gray-200 text-center">{DAY_LABELS[day]}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredTimeSlots.filter(s => !s.isBreak).map(slot => (
+                            <tr key={slot.id} className="hover:bg-gray-50">
+                              <td className="p-2 border border-gray-200 bg-gray-50 font-medium">
+                                {slot.slotName} ({formatTime(slot.startTime)})
+                              </td>
+                              {DAYS.map(day => {
+                                const densityCount = analytics.slotDensity[`${day}_${slot.id}`] || 0;
+                                let colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-100'; // high availability
+                                if (densityCount >= 1 && densityCount <= 2) {
+                                  colorClass = 'bg-sky-50 text-sky-700 border-sky-100';
+                                } else if (densityCount >= 3 && densityCount <= 5) {
+                                  colorClass = 'bg-amber-50 text-amber-700 border-amber-100';
+                                } else if (densityCount >= 6) {
+                                  colorClass = 'bg-rose-50 text-rose-700 font-bold border-rose-100'; // congested
+                                }
+
+                                return (
+                                  <td
+                                    key={day}
+                                    onClick={() => {
+                                      setSelectedAnalyticsSlot({ day, slotId: slot.id });
+                                      setActiveAnalyticsTab('slotOccupancy');
+                                    }}
+                                    className={`p-2 border text-center cursor-pointer transition-colors hover:opacity-80 ${colorClass}`}
+                                    title="Click to view live occupancy details"
+                                  >
+                                    {densityCount} Busy
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {activeAnalyticsTab === 'slotOccupancy' && (
+                  <div className="space-y-3">
+                    {selectedAnalyticsSlot ? (
+                      <div>
+                        <div className="flex items-center justify-between bg-primary-50 text-primary-900 px-3 py-2 rounded-lg mb-3">
+                          <span className="font-semibold text-xs">
+                            Live Occupancy for {DAY_LABELS[selectedAnalyticsSlot.day]} - {
+                              filteredTimeSlots.find(s => s.id === selectedAnalyticsSlot.slotId)?.slotName || `Period ${selectedAnalyticsSlot.slotId}`
+                            }
+                          </span>
+                          <button
+                            onClick={() => setSelectedAnalyticsSlot(null)}
+                            className="text-[10px] hover:underline"
+                          >
+                            Reset Slot selection
+                          </button>
+                        </div>
+                        
+                        {isLoadingSlotDetails ? (
+                          <div className="text-center py-6 text-xs text-gray-500 animate-pulse">Querying live slot details...</div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Free Rooms */}
+                            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                              <h4 className="font-semibold text-gray-800 text-xs mb-2 border-b pb-1">Available Rooms ({slotFreeRooms.length})</h4>
+                              <div className="max-h-40 overflow-y-auto space-y-1 text-[10px]">
+                                {slotFreeRooms.length === 0 ? (
+                                  <p className="text-gray-500 italic">No rooms free at this time.</p>
+                                ) : (
+                                  slotFreeRooms.map(r => (
+                                    <div key={r.id} className="flex justify-between bg-white border border-gray-200 rounded px-2 py-1">
+                                      <span className="font-medium text-gray-700">{r.roomNumber} ({r.roomType || 'classroom'})</span>
+                                      <span className="text-gray-400">cap: {r.capacity}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Free Teachers */}
+                            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                              <h4 className="font-semibold text-gray-800 text-xs mb-2 border-b pb-1">Available Teachers ({slotFreeTeachers.length})</h4>
+                              <div className="max-h-40 overflow-y-auto space-y-1 text-[10px]">
+                                {slotFreeTeachers.length === 0 ? (
+                                  <p className="text-gray-500 italic">No professors free at this time.</p>
+                                ) : (
+                                  slotFreeTeachers.map(t => {
+                                    const teacherHours = analytics.teacherWorkloads[t.id] || 0;
+                                    const teacherMax = t.maxWeeklyHours || 30;
+                                    return (
+                                      <div key={t.id} className="flex justify-between bg-white border border-gray-200 rounded px-2 py-1">
+                                        <span className="font-medium text-gray-700 truncate max-w-[120px]">{t.name}</span>
+                                        <span className={teacherHours >= teacherMax * 0.9 ? 'text-amber-600 font-medium' : 'text-gray-400'}>
+                                          {teacherHours.toFixed(0)}/{teacherMax} hrs
+                                        </span>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Free Batches */}
+                            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                              <h4 className="font-semibold text-gray-800 text-xs mb-2 border-b pb-1">Available Batches ({slotFreeBatches.length})</h4>
+                              <div className="max-h-40 overflow-y-auto space-y-1 text-[10px]">
+                                {slotFreeBatches.length === 0 ? (
+                                  <p className="text-gray-500 italic">No batches free at this time.</p>
+                                ) : (
+                                  slotFreeBatches.map(b => (
+                                    <div key={b.id} className="bg-white border border-gray-200 rounded px-2 py-1 text-center">
+                                      <span className="font-medium text-gray-700">{b.name}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-xs text-gray-400 italic">
+                        Click on a slot in the Timetable Density Heat Map tab to view live resource lists for that cell!
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
           {/* Entry count */}
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-600">
@@ -971,7 +1318,7 @@ export const TimetableManagementPage: React.FC = () => {
           courses={courses}
           teachers={teachers}
           rooms={rooms}
-          timeSlots={timeSlots}
+          timeSlots={filteredTimeSlots}
           batches={batches}
           prefillDay={prefillDay}
           prefillSlotId={prefillSlotId}
@@ -980,6 +1327,8 @@ export const TimetableManagementPage: React.FC = () => {
           setConflicts={setConflicts}
           onSaved={fetchDraft}
           formatTime={formatTime}
+          analytics={analytics}
+          draftEntries={draftEntries}
         />
       )}
 
@@ -1053,6 +1402,139 @@ export const TimetableManagementPage: React.FC = () => {
   );
 };
 
+// ─── Custom Searchable Select Component ───────────────────────────────
+interface SearchableSelectProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; subLabel?: string; badge?: string }[];
+  placeholder: string;
+  required?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+  emptyMessage?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  label, value, onChange, options, placeholder, required = false, disabled = false, loading = false, emptyMessage = 'No options found'
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = useMemo(() => {
+    if (!search) return options;
+    const s = search.toLowerCase();
+    return options.filter(opt =>
+      opt.label.toLowerCase().includes(s) ||
+      (opt.subLabel && opt.subLabel.toLowerCase().includes(s))
+    );
+  }, [search, options]);
+
+  const selectedOption = useMemo(() => {
+    return options.find(opt => opt.value === value);
+  }, [value, options]);
+
+  // Reset search when opening/closing
+  useEffect(() => {
+    if (isOpen) setSearch('');
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label} {required && <span className="text-red-500">*</span>}
+        {loading && <span className="text-xs text-gray-400 ml-2 animate-pulse">(Loading...)</span>}
+      </label>
+      
+      <div
+        onClick={() => !disabled && !loading && setIsOpen(!isOpen)}
+        className={`flex items-center justify-between w-full border rounded-lg px-3 py-2 text-sm bg-white shadow-sm cursor-pointer transition-all ${
+          disabled || loading
+            ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
+            : 'border-gray-300 hover:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500'
+        }`}
+      >
+        <span className={selectedOption ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <svg
+          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'transform rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-[100] mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+          <div className="p-2 border-b border-gray-100 bg-gray-50">
+            <input
+              type="text"
+              autoFocus
+              className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <ul className="max-h-60 overflow-y-auto py-1">
+            {filteredOptions.length === 0 ? (
+              <li className="px-4 py-3 text-xs text-gray-500 text-center italic">{emptyMessage}</li>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = opt.value === value;
+                return (
+                  <li
+                    key={opt.value}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }}
+                    className={`flex flex-col px-4 py-2 text-sm cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-primary-50 text-primary-900 font-semibold'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>{opt.label}</span>
+                      {opt.badge && (
+                        <span className="text-[10px] font-semibold bg-primary-100 text-primary-800 px-1.5 py-0.5 rounded-full">
+                          {opt.badge}
+                        </span>
+                      )}
+                    </div>
+                    {opt.subLabel && (
+                      <span className={`text-[10px] mt-0.5 ${isSelected ? 'text-primary-700' : 'text-gray-400'}`}>
+                        {opt.subLabel}
+                      </span>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Entry Form Modal ─────────────────────────────────────────────────
 interface EntryFormModalProps {
   isOpen: boolean;
@@ -1072,13 +1554,15 @@ interface EntryFormModalProps {
   setConflicts: (c: string[]) => void;
   onSaved: () => void;
   formatTime: (t: string) => string;
+  analytics: any;
+  draftEntries: any[];
 }
 
 const EntryFormModal: React.FC<EntryFormModalProps> = ({
   isOpen, onClose, editingEntry, divisionId, academicYearId,
   courses, teachers, rooms, timeSlots, batches,
   prefillDay, prefillSlotId, defaultSemester, conflicts, setConflicts, onSaved,
-  formatTime,
+  formatTime, analytics, draftEntries,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
@@ -1155,82 +1639,135 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
     loadAvailableCourses();
   }, [isOpen, divisionId, academicYearId, form.semester, editingEntry, courses]);
 
-  // Phase 3: Load available rooms and teachers when day/slot changes
+  // Unified reactive real-time availability refresh
   useEffect(() => {
     if (!form.dayOfWeek || !form.timeSlotId || !form.semester) {
       setAvailableRooms(rooms);
       setAvailableTeachers(teachers);
+      setAvailableBatches(batches);
       return;
     }
 
     const loadAvailability = async () => {
       try {
         setIsLoadingAvailability(true);
-        const [roomsRes, teachersRes] = await Promise.all([
-          timetableAPI.getAvailableRooms(form.dayOfWeek, Number(form.timeSlotId), academicYearId, form.semester, divisionId),
-          timetableAPI.getAvailableTeachers(form.dayOfWeek, Number(form.timeSlotId), academicYearId, form.semester),
+        
+        // Fetch busy/available resources from backend
+        const [roomsRes, teachersRes, batchesRes] = await Promise.all([
+          timetableAPI.getAvailableRooms(
+            form.dayOfWeek,
+            Number(form.timeSlotId),
+            academicYearId,
+            form.semester,
+            divisionId,
+            form.courseId ? Number(form.courseId) : undefined,
+            form.batchId ? Number(form.batchId) : undefined
+          ),
+          timetableAPI.getAvailableTeachers(
+            form.dayOfWeek,
+            Number(form.timeSlotId),
+            academicYearId,
+            form.semester,
+            form.courseId ? Number(form.courseId) : undefined
+          ),
+          timetableAPI.getAvailableBatches(
+            divisionId,
+            form.dayOfWeek,
+            Number(form.timeSlotId),
+            academicYearId,
+            form.semester
+          ),
         ]);
-        setAvailableRooms(Array.isArray(roomsRes.data) ? roomsRes.data : []);
-        setAvailableTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
+
+        const freeRooms = Array.isArray(roomsRes.data) ? roomsRes.data : [];
+        const freeTeachers = Array.isArray(teachersRes.data) ? teachersRes.data : [];
+        const freeBatches = Array.isArray(batchesRes.data) ? batchesRes.data : [];
+
+        // If editing, make sure current selections are included in the available options
+        if (editingEntry) {
+          if (editingEntry.room?.id && !freeRooms.find((r: any) => r.id === editingEntry.room.id)) {
+            const currentRoom = rooms.find((r: any) => r.id === editingEntry.room.id);
+            if (currentRoom) freeRooms.unshift(currentRoom);
+          }
+          if (editingEntry.teacher?.id && !freeTeachers.find((t: any) => t.id === editingEntry.teacher.id)) {
+            const currentTeacher = teachers.find((t: any) => t.id === editingEntry.teacher.id);
+            if (currentTeacher) freeTeachers.unshift(currentTeacher);
+          }
+        }
+
+        setAvailableRooms(freeRooms);
+        setAvailableTeachers(freeTeachers);
+
+        // Handle batch selection intersection for LAB courses
+        if (form.courseId) {
+          const selectedCourse = editingEntry
+            ? courses.find((c: any) => c.id === Number(form.courseId))
+            : availableCourses.find((c: any) => c.id === Number(form.courseId));
+
+          if (selectedCourse?.courseType === 'LAB') {
+            setIsLoadingBatches(true);
+            try {
+              // 1. Get batches that still need this lab course allocated
+              const courseBatchesRes = await courseAPI.getAvailableBatchesForCourse(
+                Number(form.courseId),
+                divisionId,
+                academicYearId
+              );
+              const courseBatches = Array.isArray(courseBatchesRes.data) ? courseBatchesRes.data : [];
+
+              // 2. Intersect: batch must be free in the slot AND need the course
+              let intersected = courseBatches.filter((cb: any) =>
+                freeBatches.some((fb: any) => fb.id === cb.id)
+              );
+
+              // 3. If editing, preserve the current batch choice
+              if (editingEntry && editingEntry.batch?.id) {
+                const currentBatch = batches.find((b: any) => b.id === editingEntry.batch.id);
+                if (currentBatch && !intersected.find((b: any) => b.id === currentBatch.id)) {
+                  intersected.unshift(currentBatch);
+                }
+              }
+
+              setAvailableBatches(intersected);
+            } catch (err) {
+              console.error('Failed to load course-specific batches:', err);
+              setAvailableBatches(freeBatches); // fallback to free batches
+            } finally {
+              setIsLoadingBatches(false);
+            }
+          } else {
+            setAvailableBatches(freeBatches);
+          }
+        } else {
+          setAvailableBatches(freeBatches);
+        }
+
       } catch (err) {
         console.error('Failed to load availability:', err);
-        // Fallback to showing all
         setAvailableRooms(rooms);
         setAvailableTeachers(teachers);
+        setAvailableBatches(batches);
       } finally {
         setIsLoadingAvailability(false);
       }
     };
 
     loadAvailability();
-  }, [form.dayOfWeek, form.timeSlotId, form.semester, academicYearId, divisionId, rooms, teachers]);
-
-  // Load available batches when a lab course is selected
-  useEffect(() => {
-    if (!form.courseId || !isOpen) {
-      setAvailableBatches(batches);
-      return;
-    }
-
-    const selectedCourse = editingEntry 
-      ? courses.find((c: any) => c.id === Number(form.courseId))
-      : availableCourses.find((c: any) => c.id === Number(form.courseId));
-
-    // Only filter batches for lab courses
-    if (selectedCourse?.courseType !== 'LAB') {
-      setAvailableBatches(batches);
-      return;
-    }
-
-    const loadAvailableBatches = async () => {
-      try {
-        setIsLoadingBatches(true);
-        const res = await courseAPI.getAvailableBatchesForCourse(
-          Number(form.courseId),
-          divisionId,
-          academicYearId
-        );
-        let filteredBatches = Array.isArray(res.data) ? res.data : [];
-        
-        // If editing, include the current batch even if it's allocated
-        if (editingEntry && editingEntry.batch?.id) {
-          const currentBatch = batches.find((b: any) => b.id === editingEntry.batch.id);
-          if (currentBatch && !filteredBatches.find((b: any) => b.id === currentBatch.id)) {
-            filteredBatches = [currentBatch, ...filteredBatches];
-          }
-        }
-        
-        setAvailableBatches(filteredBatches);
-      } catch (err) {
-        console.error('Failed to load available batches:', err);
-        setAvailableBatches(batches);
-      } finally {
-        setIsLoadingBatches(false);
-      }
-    };
-
-    loadAvailableBatches();
-  }, [form.courseId, isOpen, divisionId, academicYearId, batches, editingEntry, courses, availableCourses]);
+  }, [
+    form.dayOfWeek,
+    form.timeSlotId,
+    form.semester,
+    form.courseId,
+    form.batchId,
+    academicYearId,
+    divisionId,
+    rooms,
+    teachers,
+    batches,
+    editingEntry,
+    courses,
+    availableCourses
+  ]);
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -1313,6 +1850,75 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
   // Display courses list - use credit-based for new entries, all courses for editing
   const displayCourses = editingEntry ? courses : availableCourses;
 
+  // Options mapping for SearchableSelects
+  const courseOptions = useMemo(() => {
+    return displayCourses.map((c: any) => ({
+      value: c.id.toString(),
+      label: `${c.displayName || c.name} ${c.courseType === 'LAB' ? '(Lab)' : ''}`,
+      subLabel: c.code ? `Code: ${c.code}` : undefined,
+      badge: c.courseType === 'LAB' ? 'LAB' : 'THEORY',
+    }));
+  }, [displayCourses]);
+
+  const teacherOptions = useMemo(() => {
+    return availableTeachers.map((t: any) => {
+      const workloadHours = analytics?.teacherWorkloads?.[t.id] || 0;
+      const maxHours = t.maxWeeklyHours || 30;
+      const isNearLimit = workloadHours >= maxHours * 0.9;
+      return {
+        value: t.id.toString(),
+        label: t.name,
+        subLabel: `Dept: ${t.department?.name || 'N/A'} | Workload: ${workloadHours.toFixed(1)} / ${maxHours} hrs`,
+        badge: isNearLimit ? 'NEAR LIMIT' : undefined,
+      };
+    });
+  }, [availableTeachers, analytics]);
+
+  const roomOptions = useMemo(() => {
+    return availableRooms.map((r: any) => {
+      const bookingCount = analytics?.roomBookingCounts?.[r.id] || 0;
+      return {
+        value: r.id.toString(),
+        label: `${r.roomNumber} ${r.name ? `- ${r.name}` : ''}`,
+        subLabel: `Type: ${r.roomType || 'classroom'} | Bookings: ${bookingCount} slots`,
+        badge: r.roomType,
+      };
+    });
+  }, [availableRooms, analytics]);
+
+  const batchOptions = useMemo(() => {
+    return availableBatches.map((b: any) => ({
+      value: b.id.toString(),
+      label: b.name,
+      subLabel: b.strength ? `Strength: ${b.strength}` : undefined,
+    }));
+  }, [availableBatches]);
+
+  const conflictSuggestions = useMemo(() => {
+    if (conflicts.length === 0 || !form.teacherId || !form.roomId || !form.courseId) return [];
+    const tId = Number(form.teacherId);
+    const rId = Number(form.roomId);
+    const suggestions: any[] = [];
+    
+    timeSlots.forEach((slot: any) => {
+      if (slot.isBreak) return;
+      DAYS.forEach((day) => {
+        if (day === form.dayOfWeek && slot.id.toString() === form.timeSlotId) return;
+        const isTBusy = draftEntries.some(e => e.teacher?.id === tId && e.dayOfWeek === day && e.timeSlot?.id === slot.id && (!editingEntry || e.id !== editingEntry.id));
+        const isRBusy = draftEntries.some(e => e.room?.id === rId && e.dayOfWeek === day && e.timeSlot?.id === slot.id && (!editingEntry || e.id !== editingEntry.id));
+        const isDBusy = draftEntries.some(e => e.division?.id === divisionId && e.dayOfWeek === day && e.timeSlot?.id === slot.id && (!editingEntry || e.id !== editingEntry.id));
+        if (!isTBusy && !isRBusy && !isDBusy) {
+          suggestions.push({
+            day,
+            slotId: slot.id,
+            label: `${DAY_LABELS[day]} - ${slot.slotName} (${formatTime(slot.startTime)} - ${formatTime(slot.endTime)})`
+          });
+        }
+      });
+    });
+    return suggestions.slice(0, 3);
+  }, [conflicts, form.teacherId, form.roomId, form.courseId, form.dayOfWeek, form.timeSlotId, timeSlots, draftEntries, editingEntry, divisionId, formatTime]);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -1323,16 +1929,43 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Conflict warnings */}
         {conflicts.length > 0 && (
-          <div className="bg-red-50 border border-red-300 rounded-lg p-4">
+          <div className="bg-red-50 border border-red-300 rounded-lg p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <FiAlertTriangle className="text-red-600" />
               <span className="font-semibold text-red-800">Scheduling Conflicts Detected</span>
             </div>
-            <ul className="text-sm text-red-700 space-y-1">
+            <ul className="text-sm text-red-700 space-y-1 mb-3">
               {conflicts.map((c, i) => (
                 <li key={i}>- {c}</li>
               ))}
             </ul>
+            
+            {/* Suggested alternative free slots */}
+            {conflictSuggestions.length > 0 && (
+              <div className="text-xs bg-white border border-red-250 rounded-lg p-3 text-gray-900 shadow-sm mt-3">
+                <span className="font-semibold flex items-center gap-1.5 text-primary-800 mb-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary-500 animate-pulse"></span>
+                  Recommended Free Slots:
+                </span>
+                <div className="space-y-2">
+                  {conflictSuggestions.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        handleChange('dayOfWeek', s.day);
+                        handleChange('timeSlotId', s.slotId.toString());
+                        setConflicts([]);
+                      }}
+                      className="w-full flex items-center justify-between text-left text-xs bg-primary-50 hover:bg-primary-100 border border-primary-200 hover:border-primary-300 rounded-md px-3 py-2 text-primary-700 transition-all font-semibold"
+                    >
+                      <span>{s.label}</span>
+                      <span className="text-[10px] bg-primary-600 text-white px-2 py-0.5 rounded font-bold uppercase tracking-wider">Apply</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1377,119 +2010,61 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
             </select>
           </div>
 
-          {/* Course - Phase 4: Credit-based selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Course <span className="text-red-500">*</span>
-              {isLoadingCourses && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
-            </label>
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              value={form.courseId}
-              onChange={(e) => handleChange('courseId', e.target.value)}
-              required
-              disabled={isLoadingCourses}
-            >
-              <option value="">Select Course</option>
-              {displayCourses.map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.displayName || c.name} {c.courseType === 'LAB' ? '(Lab)' : ''} {c.code ? `[${c.code}]` : ''}
-                </option>
-              ))}
-            </select>
-            {!editingEntry && displayCourses.length === 0 && !isLoadingCourses && (
-              <p className="text-xs text-orange-600 mt-1">
-                All course credits have been allocated. Delete an entry to free up a credit slot.
-              </p>
-            )}
-          </div>
+          {/* Course - Searchable Selection */}
+          <SearchableSelect
+            label="Course"
+            value={form.courseId}
+            onChange={(val) => handleChange('courseId', val)}
+            options={courseOptions}
+            placeholder="Select Course"
+            required
+            loading={isLoadingCourses}
+            emptyMessage="No available courses found with pending credits."
+          />
 
-          {/* Teacher - Phase 3: Availability filtering */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Teacher <span className="text-red-500">*</span>
-              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
-            </label>
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              value={form.teacherId}
-              onChange={(e) => handleChange('teacherId', e.target.value)}
-              required
-              disabled={isLoadingAvailability}
-            >
-              <option value="">Select Teacher</option>
-              {availableTeachers.map((t: any) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} {t.department?.name ? `(${t.department.name})` : ''}
-                </option>
-              ))}
-            </select>
-            {form.dayOfWeek && form.timeSlotId && availableTeachers.length === 0 && !isLoadingAvailability && (
-              <p className="text-xs text-orange-600 mt-1">
-                No teachers available at this time. All teachers are occupied.
-              </p>
-            )}
-          </div>
+          {/* Teacher - Searchable Selection */}
+          <SearchableSelect
+            label="Teacher"
+            value={form.teacherId}
+            onChange={(val) => handleChange('teacherId', val)}
+            options={teacherOptions}
+            placeholder="Select Teacher"
+            required
+            loading={isLoadingAvailability}
+            emptyMessage="No teachers available. All are occupied or over limit."
+          />
 
-          {/* Room - Phase 3: Availability filtering */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Room <span className="text-red-500">*</span>
-              {isLoadingAvailability && <span className="text-xs text-gray-500 ml-2">(Checking...)</span>}
-            </label>
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              value={form.roomId}
-              onChange={(e) => handleChange('roomId', e.target.value)}
-              required
-              disabled={isLoadingAvailability}
-            >
-              <option value="">Select Room</option>
-              {availableRooms.map((r: any) => (
-                <option key={r.id} value={r.id}>
-                  {r.roomNumber} {r.name ? `- ${r.name}` : ''} ({r.roomType || 'classroom'}, cap: {r.capacity || '?'})
-                </option>
-              ))}
-            </select>
-            {form.dayOfWeek && form.timeSlotId && availableRooms.length === 0 && !isLoadingAvailability && (
-              <p className="text-xs text-orange-600 mt-1">
-                No rooms available at this time. All rooms are occupied.
-              </p>
-            )}
-          </div>
+          {/* Room - Searchable Selection */}
+          <SearchableSelect
+            label="Room"
+            value={form.roomId}
+            onChange={(val) => handleChange('roomId', val)}
+            options={roomOptions}
+            placeholder="Select Room"
+            required
+            loading={isLoadingAvailability}
+            emptyMessage="No rooms available. All are occupied or wrong type."
+          />
 
-          {/* Batch - Hidden for theory, required for lab */}
+          {/* Batch - Hidden for theory, searchable for lab */}
           {isLabCourse ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Batch <span className="text-red-500">*</span>
-                {isLoadingBatches && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
-              </label>
-              <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                value={form.batchId}
-                onChange={(e) => handleChange('batchId', e.target.value)}
-                required
-                disabled={isLoadingBatches}
-              >
-                <option value="">Select batch...</option>
-                {availableBatches.map((b: any) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              {availableBatches.length === 0 && !isLoadingBatches && (
-                <p className="text-xs text-orange-600 mt-1">
-                  All batches have been allocated this lab course.
-                </p>
-              )}
-            </div>
+            <SearchableSelect
+              label="Batch"
+              value={form.batchId}
+              onChange={(val) => handleChange('batchId', val)}
+              options={batchOptions}
+              placeholder="Select Batch"
+              required
+              loading={isLoadingBatches}
+              emptyMessage="No batches available for this lab slot."
+            />
           ) : (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Batch
               </label>
               <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed text-gray-500 font-medium"
                 value=""
                 disabled
               >

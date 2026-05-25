@@ -1,0 +1,82 @@
+\newpage
+\chapter{Introduction}
+
+\section{Background}
+
+Academic scheduling is the operational backbone of every educational institution. A well-structured timetable determines when every lecture is delivered, which faculty member teaches each session, which classroom or laboratory is occupied, and how student divisions flow through their weekly academic life. It is the single artefact that connects faculty availability, institutional infrastructure, course curricula, and student attendance into one coherent weekly rhythm. A well-constructed timetable is, therefore, not merely an administrative document but a critical instrument of academic quality.
+
+As engineering institutions have grown in scale and complexity, the difficulty of preparing accurate timetables has grown proportionally. A typical modern college such as MIT Academy of Engineering (MITAOE) operates multiple undergraduate programmes across several departments, each with multiple divisions per academic year, each division running parallel theory courses alongside batch-split laboratory sessions. Faculty members frequently teach across divisions and occasionally across departments. Shared rooms --- particularly specialised laboratories --- must be allocated across multiple user groups without overlap. Within this web of interdependence, even a small scheduling error cascades: one misallocated room can disrupt three divisions, and one overlapping faculty assignment can confuse an entire department's weekly flow.
+
+Traditionally, timetables have been prepared manually using spreadsheets, paper-based templates, or word-processing documents. These tools are flexible but offer no automated validation. The academic coordinator is expected to mentally cross-check dozens of constraints --- no double-booking of teachers, no double-booking of rooms, batch sizes fitting in their assigned laboratories, faculty daily and weekly workload limits, break-slot protection, and matching room type to course type (lecture versus laboratory) --- on every single cell of the grid. This mental overhead scales quadratically with the number of entries, making errors statistically inevitable in any non-trivial institution.
+
+A second limitation of manual scheduling is its \textbf{low adaptability}. Academic institutions routinely experience mid-semester disruptions: faculty leave, last-minute course swaps, classroom maintenance, and new elective offerings. In a spreadsheet-based workflow, absorbing such changes often requires partial regeneration of multiple interconnected timetables, each regeneration risking new errors. Institutions therefore tend to freeze their timetables early and treat them as rigid, sacrificing responsiveness for stability.
+
+A third limitation is the \textbf{lack of standardisation and auditability}. Different coordinators bring different heuristics. Workload distribution varies from one department to another. Revision history is lost when spreadsheets are overwritten. Students and faculty cannot easily confirm which version they are looking at, and corrections communicated through printed notices or emails propagate unevenly.
+
+Finally, conventional approaches provide \textbf{no real-time visibility}. A faculty member travelling to a substitute lecture has no reliable way to confirm the current timetable short of calling the department office. Students distribute PDF copies over informal channels. Newly-hired teachers have no structured view of their weekly commitments until someone personally briefs them.
+
+The convergence of three technology trends makes a software solution to this problem both feasible and overdue: the widespread availability of cloud-hosted relational databases, the maturity of web application frameworks that can deliver rich interactive interfaces to any browser, and the established patterns of role-based security that allow administrators, faculty, and students to share the same underlying data through different, appropriately-scoped views.
+
+\textbf{SamaySetu} --- literally ``the bridge of time'' in Sanskrit --- has been conceptualised as a direct response to these institutional needs. The project replaces manual spreadsheet-based scheduling with a centralised, role-aware, web-based timetable management platform that preserves the domain expertise of the academic coordinator while eliminating the mechanical errors that characterise manual work. Rather than opaque black-box auto-generation, SamaySetu provides an interactive visual builder paired with a transparent, eight-point conflict detection engine that enforces institutional rules as each entry is placed, moved, or edited.
+
+\section{Motivation}
+
+The motivation for developing SamaySetu stems from three distinct but reinforcing sources.
+
+\textbf{First, a direct operational pain.} Observing the timetable preparation process at MITAOE, the team noted that the academic coordinator's team dedicates approximately two to three weeks at the start of every semester to constructing, validating, re-validating, and distributing timetables. A significant portion of this effort is spent detecting conflicts after the fact --- a teacher emails to report that they have been double-booked, a division discovers an overlap on the first day of class, or a laboratory room is occupied when it was meant to be free. Every such report triggers a revision cycle that ripples through related timetables. A system that prevents conflicts at the point of entry would eliminate this entire class of rework.
+
+\textbf{Second, a professional opportunity.} As third-year students of Computer Engineering, we have studied the core subjects --- database systems, software engineering, web technologies, operating systems, security fundamentals --- as isolated units. A project of this scope demands the integration of all of them. Designing a normalised relational schema for academic data, developing a secure Spring Boot REST API, implementing BCrypt password hashing and JWT-based authentication, adding Redis caching with correct invalidation, building a React single-page interface with drag-and-drop interaction, and finally packaging the result for AWS deployment --- each of these milestones forced us to translate textbook knowledge into working code. The motivation, therefore, is also pedagogical: to build something genuinely useful while consolidating what we have been taught.
+
+\textbf{Third, a scalable foundation.} Many existing commercial timetable tools are either generic (treating all institutions as interchangeable) or rigidly tailored to one college's idiosyncrasies with no room to adapt. We wanted to design SamaySetu as a production-capable platform specific to MITAOE's structure and vocabulary --- academic years, departments, divisions, batches, TYPE\_1 and TYPE\_2 time-slot profiles, HOD and Timetable Coordinator roles --- while keeping the architectural layering clean enough that the same system could be generalised to other colleges with focused effort.
+
+\section{Project Idea}
+
+The core idea of SamaySetu is to provide a \textbf{single-source-of-truth web platform} for managing the complete lifecycle of an academic timetable at a multi-department engineering college. The platform models the institution's academic structure as a set of first-class database entities --- Academic Years, Departments, Courses, Divisions, Batches, Rooms, Time Slots, Teachers, Students --- and allows administrators to manipulate them through role-appropriate web interfaces. Timetable entries are created and modified through a visual grid (days-as-columns, time-slots-as-rows) with click-to-edit and drag-and-drop semantics, while an always-active conflict engine rejects any entry that would violate institutional rules.
+
+The system's distinguishing design decision is its commitment to \textbf{transparent, rule-based conflict prevention over opaque automated generation}. Commercial and academic research systems have explored genetic algorithms, NSGA-II, and other metaheuristics to auto-produce feasible schedules. These approaches are impressive but often generate results that the coordinator must still manually adjust for non-codifiable preferences (senior faculty prefer morning slots, certain laboratories have unofficial shared ownership, external-expert visiting lectures cannot be rescheduled, and so on). SamaySetu instead embraces the coordinator's expertise: the human places entries, and the system guarantees that every placement respects a precisely-specified rule set.
+
+The scheduling entities the system manages are:
+\begin{itemize}
+    \item \textbf{Faculty members} with min/max weekly teaching hours and optional per-slot availability preferences;
+    \item \textbf{Courses} classified as theory or laboratory, each belonging to a department and semester;
+    \item \textbf{Divisions} identifying year $\times$ branch $\times$ section, each declaring its student strength and its time-slot profile;
+    \item \textbf{Batches} splitting a division for laboratory sessions;
+    \item \textbf{Classrooms and laboratories} with capacity, type, and optional owning department;
+    \item \textbf{Time slots} organised as two parallel templates (TYPE\_1 and TYPE\_2) so first-shift and second-shift divisions can follow different daily rhythms;
+    \item \textbf{Academic years} scoping the above so that past, current, and future years coexist without collision.
+\end{itemize}
+
+Generated timetables are accessible to every stakeholder through role-appropriate views: administrators see the full draft-edit-publish lifecycle, teachers see their personal weekly schedule, and exports in PDF and Microsoft Excel formats are available for printing, archiving, and offline distribution. Draft timetables are invisible to non-administrators; only published timetables reach the faculty-facing views and are served from a Redis cache for low latency.
+
+\section{Proposed Solution}
+
+The proposed solution is a three-tier, web-based timetable management platform organised as follows:
+
+\begin{enumerate}
+    \item \textbf{Data Management Layer:} The administrator progressively builds the institutional knowledge graph --- academic years, departments, courses, rooms, divisions, batches, time slots, and staff accounts --- through CRUD interfaces. Bulk upload via CSV is supported for staff and courses.
+    \item \textbf{Constraint-Aware Scheduling Layer:} The administrator places timetable entries in a visual grid. Each entry, whether created by click-to-add or drag-and-drop movement, is validated against an eight-point conflict check (break-slot protection, teacher double-booking, room double-booking, division double-booking, teacher daily period limit, teacher weekly hour limit computed by actual slot durations, room capacity, and room-course type match). Conflicts are reported in full so the administrator can address them in a single pass rather than one at a time.
+    \item \textbf{Lab Session Handling:} A dedicated Lab Session Wizard creates the $2 \times N$ entries (N batches running in parallel across two consecutive periods) atomically and links them through a shared lab session group. The conflict engine treats these as intentional parallels rather than conflicts.
+    \item \textbf{Pre-Publish Validation:} Before any draft becomes visible to faculty, it must pass a comprehensive validation check that reports blocking errors (for example, a teacher allocated beyond their weekly maximum) and informational warnings (for example, an empty Saturday or an empty core morning slot).
+    \item \textbf{Publish and Caching:} On publish, the service archives any previously-published version for the same division and academic year, flips every draft entry to PUBLISHED, and evicts the Redis caches so subsequent reads see the current version.
+    \item \textbf{Export and Distribution:} PDF and Excel exports are generated server-side for both division-wise and teacher-wise timetables. Exports feature institutional branding, merged break rows, and colour-coded laboratory cells.
+    \item \textbf{Security and Observability:} Every endpoint is secured through JWT-based authentication. Authorisation is enforced via URL-level and method-level role checks for four distinct roles (Administrator, HOD, Timetable Coordinator, Teacher). Rate limiting protects authentication endpoints, global XSS sanitisation protects every write path, and an audit log captures every administrator action.
+\end{enumerate}
+
+This combination ensures that the generated timetables are always conflict-free, that the generation process is transparent and auditable, and that the human expertise of the academic coordinator is preserved while the mechanical bookkeeping is delegated to the system.
+
+\section{Project Report Organization (Chapter wise summary)}
+
+\textbf{Chapter 1} introduces the SamaySetu project, explains the institutional context and the limitations of manual scheduling, states the motivation for developing a software solution, and outlines the proposed platform and its distinguishing features.
+
+\textbf{Chapter 2} presents a review of existing literature on automated timetable generation, including genetic-algorithm-based (NSGA-II), mathematical-programming-based, and artificial-intelligence-based approaches. It also evaluates the limitations of these approaches and positions SamaySetu as a complementary, engineering-focused solution that emphasises correctness and transparency.
+
+\textbf{Chapter 3} states the problem definition formally, enumerates the project's goals and objectives, defines the system scope and major constraints, and specifies the hardware and software requirements for both end-users and developers.
+
+\textbf{Chapter 4} presents the system requirement specification. It describes the overall architecture, the key backend and frontend components, the block and sequence diagrams that capture the system's behaviour, and the phase-wise project plan.
+
+\textbf{Chapter 5} describes the methodology of system design and implementation. It covers the three-tier architecture, the domain model, the formal description of the conflict detection algorithm, the caching strategy, and the security model. Testing and results obtained from the actual implementation are presented here.
+
+\textbf{Chapter 6} concludes the report by summarising what the project has achieved, the extent to which its objectives have been met, the known limitations of the current implementation, and a roadmap of enhancements planned for future work.
+
+\vspace{10mm}
+\hrule

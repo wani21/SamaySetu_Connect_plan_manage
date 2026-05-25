@@ -37,6 +37,9 @@ public class Batch {
     @Column(nullable = false)
     private String name;
 
+    @Column(name = "strength")
+    private Integer strength;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "division_id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"timetableEntries", "students", "department", "academicYear"})
