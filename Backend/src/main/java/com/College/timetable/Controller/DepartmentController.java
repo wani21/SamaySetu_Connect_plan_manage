@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,19 +19,25 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.College.timetable.Entity.DepartmentEntity;
 import com.College.timetable.Service.DepartmentService;
+import com.College.timetable.Service.DepartmentAuthorizationService;
 
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/api/departments")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
 public class DepartmentController {
 	
 	private static final Logger log = LoggerFactory.getLogger(DepartmentController.class);
 	
 	@Autowired
 	private DepartmentService departmentService;
+
+	@Autowired
+	private DepartmentAuthorizationService authService;
 	
 	@PostMapping
+	@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
 	public ResponseEntity<DepartmentEntity> addDepartment(@Valid @RequestBody DepartmentEntity dep) {
 		log.info("Adding new department: {}", dep.getName());
 		DepartmentEntity saved = departmentService.addDep(dep);
@@ -40,22 +47,40 @@ public class DepartmentController {
 	@GetMapping
 	public ResponseEntity<List<DepartmentEntity>> getAllDepartments() {
 		log.info("Fetching all departments");
-		return ResponseEntity.ok(departmentService.getall());
+		List<DepartmentEntity> all = departmentService.getall();
+		if (authService.isInstitutionalAdmin()) {
+			return ResponseEntity.ok(all);
+		}
+		Long deptId = authService.getCurrentUser().getDepartment().getId();
+		List<DepartmentEntity> filtered = all.stream()
+			.filter(d -> deptId.equals(d.getId()))
+			.toList();
+		return ResponseEntity.ok(filtered);
 	}
 	
 	@GetMapping("/academic-year/{academicYearId}")
 	public ResponseEntity<List<DepartmentEntity>> getDepartmentsByAcademicYear(@PathVariable Long academicYearId) {
 		log.info("Fetching departments for academic year: {}", academicYearId);
-		return ResponseEntity.ok(departmentService.getByAcademicYear(academicYearId));
+		List<DepartmentEntity> all = departmentService.getByAcademicYear(academicYearId);
+		if (authService.isInstitutionalAdmin()) {
+			return ResponseEntity.ok(all);
+		}
+		Long deptId = authService.getCurrentUser().getDepartment().getId();
+		List<DepartmentEntity> filtered = all.stream()
+			.filter(d -> deptId.equals(d.getId()))
+			.toList();
+		return ResponseEntity.ok(filtered);
 	}
 	
 	@GetMapping("/{id}")
 	public ResponseEntity<DepartmentEntity> getDepartmentById(@PathVariable Long id) {
 		log.info("Fetching department with id: {}", id);
+		authService.checkDepartmentAccess(id);
 		return ResponseEntity.ok(departmentService.getById(id));
 	}
 	
 	@PutMapping("/{id}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
 	public ResponseEntity<DepartmentEntity> updateDepartment(@PathVariable Long id, @Valid @RequestBody DepartmentEntity dep) {
 		log.info("Updating department with id: {}", id);
 		DepartmentEntity updated = departmentService.update(id, dep);
@@ -63,6 +88,7 @@ public class DepartmentController {
 	}
 	
 	@DeleteMapping("/{id}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
 	public ResponseEntity<String> deleteDepartment(@PathVariable Long id) {
 		log.info("Deleting department with id: {}", id);
 		departmentService.delete(id);
@@ -71,6 +97,7 @@ public class DepartmentController {
 	
 	@SuppressWarnings("unchecked")
 	@PostMapping("/copy")
+	@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
 	public ResponseEntity<List<DepartmentEntity>> copyDepartments(@RequestBody Map<String, Object> request) {
 		Long sourceAcademicYearId = Long.valueOf(request.get("sourceAcademicYearId").toString());
 		Long targetAcademicYearId = Long.valueOf(request.get("targetAcademicYearId").toString());

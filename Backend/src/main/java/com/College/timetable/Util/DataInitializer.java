@@ -48,7 +48,7 @@ public class DataInitializer {
                 admin.setEmail(adminEmail);
                 admin.setEmployeeId(adminEmployeeId);
                 admin.setPassword(passwordEncoder.encode(adminPassword));
-                admin.setRole("ADMIN");
+                admin.setRole("SUPER_ADMIN");
                 admin.setIsActive(true);
                 admin.setIsApproved(true);
                 admin.setIsEmailVerified(true);

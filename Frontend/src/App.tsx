@@ -13,7 +13,7 @@ import { useAuthStore } from './store/authStore';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Roles that use admin-style dashboard layout
-const ADMIN_LAYOUT_ROLES = ['ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
+const ADMIN_LAYOUT_ROLES = ['ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
 
 function App() {
   const { isAuthenticated, user, _hasHydrated } = useAuthStore();

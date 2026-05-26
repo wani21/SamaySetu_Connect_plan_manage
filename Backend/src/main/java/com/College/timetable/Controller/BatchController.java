@@ -18,13 +18,14 @@ import com.College.timetable.Entity.Batch;
 import com.College.timetable.Entity.Division;
 import com.College.timetable.Repository.Batch_repo;
 import com.College.timetable.Repository.Division_repo;
+import com.College.timetable.Service.DepartmentAuthorizationService;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/api/batches")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
 public class BatchController {
 
     @Autowired
@@ -33,13 +34,25 @@ public class BatchController {
     @Autowired
     private Division_repo divisionRepository;
 
+    @Autowired
+    private DepartmentAuthorizationService authService;
+
     @GetMapping
     public ResponseEntity<List<Batch>> getAll() {
-        return ResponseEntity.ok(batchRepository.findAll());
+        List<Batch> all = batchRepository.findAll();
+        if (authService.isInstitutionalAdmin()) {
+            return ResponseEntity.ok(all);
+        }
+        Long deptId = authService.getCurrentUser().getDepartment().getId();
+        List<Batch> filtered = all.stream()
+            .filter(b -> b.getDivision() != null && b.getDivision().getDepartment() != null && deptId.equals(b.getDivision().getDepartment().getId()))
+            .toList();
+        return ResponseEntity.ok(filtered);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Batch> getById(@PathVariable Long id) {
+        authService.checkBatchAccess(id);
         Batch batch = batchRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Batch not found"));
         return ResponseEntity.ok(batch);
@@ -47,12 +60,14 @@ public class BatchController {
 
     @GetMapping("/division/{divisionId}")
     public ResponseEntity<List<Batch>> getByDivision(@PathVariable Long divisionId) {
+        authService.checkDivisionAccess(divisionId);
         return ResponseEntity.ok(batchRepository.findByDivisionId(divisionId));
     }
 
     @PostMapping
     public ResponseEntity<Batch> create(@Valid @RequestBody Batch batch) {
         if (batch.getDivision() != null && batch.getDivision().getId() != null) {
+            authService.checkDivisionAccess(batch.getDivision().getId());
             Division division = divisionRepository.findById(batch.getDivision().getId())
                 .orElseThrow(() -> new EntityNotFoundException("Division not found"));
             batch.setDivision(division);
@@ -62,12 +77,14 @@ public class BatchController {
 
     @PutMapping("/{id}")
     public ResponseEntity<Batch> update(@PathVariable Long id, @Valid @RequestBody Batch batch) {
+        authService.checkBatchAccess(id);
         Batch existing = batchRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Batch not found"));
         
         existing.setName(batch.getName());
         
         if (batch.getDivision() != null && batch.getDivision().getId() != null) {
+            authService.checkDivisionAccess(batch.getDivision().getId());
             Division division = divisionRepository.findById(batch.getDivision().getId())
                 .orElseThrow(() -> new EntityNotFoundException("Division not found"));
             existing.setDivision(division);
@@ -78,6 +95,7 @@ public class BatchController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
+        authService.checkBatchAccess(id);
         if (!batchRepository.existsById(id)) {
             throw new EntityNotFoundException("Batch not found");
         }

@@ -87,7 +87,7 @@ public class TimetableService {
     }
     
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public TimetableEntry addEntry(CreateTimetableEntryDTO dto) {
 
         // 1. Build conflict check request with all context needed for validation
@@ -268,7 +268,7 @@ public class TimetableService {
     // ---------------------------------------------------------------
 
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public TimetableEntry updateEntry(Long entryId, CreateTimetableEntryDTO dto) {
 
         TimetableEntry existing = timetableRepo.findById(entryId)
@@ -323,7 +323,7 @@ public class TimetableService {
     // ---------------------------------------------------------------
 
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public void deleteEntry(Long entryId) {
         TimetableEntry entry = timetableRepo.findById(entryId)
             .orElseThrow(() -> new RuntimeException("Timetable entry not found: " + entryId));
@@ -358,7 +358,7 @@ public class TimetableService {
     // ---------------------------------------------------------------
 
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public int publishTimetable(Long divisionId, Long academicYearId, Semester semester) {
         int count = timetableRepo.publishDivisionTimetableBySemester(divisionId, academicYearId, semester);
         if (count == 0) {
@@ -372,7 +372,7 @@ public class TimetableService {
     // ---------------------------------------------------------------
 
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public int archiveTimetable(Long divisionId, Long academicYearId, Semester semester) {
         return timetableRepo.archiveDivisionTimetableBySemester(divisionId, academicYearId, semester);
     }
@@ -389,6 +389,22 @@ public class TimetableService {
     public List<TimetableEntry> getDivisionTimetable(Long divisionId, Long academicYearId) {
         return timetableRepo
             .findByDivisionIdAndAcademicYearIdAndStatus(divisionId, academicYearId, TimetableStatus.PUBLISHED);
+    }
+
+    /**
+     * Get published timetable for a department — CACHED
+     */
+    @Cacheable(value = "departmentTimetable", key = "#departmentId + '_' + #academicYearId")
+    public List<TimetableEntry> getDepartmentTimetable(Long departmentId, Long academicYearId) {
+        return timetableRepo
+            .findByDivisionDepartmentIdAndAcademicYearIdAndStatus(departmentId, academicYearId, TimetableStatus.PUBLISHED);
+    }
+
+    /**
+     * Get published and draft timetable entries for a room
+     */
+    public List<TimetableEntry> getRoomTimetable(Long roomId, Long academicYearId) {
+        return timetableRepo.findByRoomAndAcademicYear(roomId, academicYearId);
     }
 
     /**
@@ -444,7 +460,7 @@ public class TimetableService {
      * Clear all DRAFT entries for a division and semester — start fresh
      */
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public int clearDraft(Long divisionId, Long academicYearId, Semester semester) {
         return timetableRepo.clearDraftTimetableBySemester(divisionId, academicYearId, semester);
     }
@@ -471,7 +487,7 @@ public class TimetableService {
      * Skips lab sessions (they need batch-specific config for the target division).
      */
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public int copyDraftEntries(Long sourceDivisionId, Long targetDivisionId, Long academicYearId) {
         if (sourceDivisionId.equals(targetDivisionId)) {
             throw new RuntimeException("Source and target division cannot be the same");
@@ -519,7 +535,7 @@ public class TimetableService {
     // ---------------------------------------------------------------
 
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public Map<String, Object> createLabSession(com.College.timetable.IO.CreateLabSessionRequest request) {
 
         // 1. Load shared entities
@@ -655,7 +671,7 @@ public class TimetableService {
      * Delete an entire lab session group and all its entries.
      */
     @Transactional
-    @CacheEvict(value = {"divisionTimetable", "teacherTimetable"}, allEntries = true)
+    @CacheEvict(value = {"divisionTimetable", "teacherTimetable", "departmentTimetable"}, allEntries = true)
     public int deleteLabSessionGroup(Long groupId) {
         List<TimetableEntry> entries = timetableRepo.findByLabSessionGroupId(groupId);
         int count = entries.size();
@@ -934,5 +950,92 @@ public class TimetableService {
             }
         }
         return density;
+    }
+
+    /**
+     * Get dashboard statistics for a department (or institution-wide if departmentId is null)
+     */
+    public java.util.Map<String, Object> getDashboardStats(Long departmentId, Long academicYearId) {
+        long teachersCount;
+        long coursesCount;
+        long divisionsCount;
+        long roomsCount;
+
+        if (departmentId != null) {
+            teachersCount = teacherRepository.countByDepartmentId(departmentId);
+            coursesCount = courseRepository.countByDepartmentId(departmentId);
+            divisionsCount = divisionRepository.countByDepartmentId(departmentId);
+            roomsCount = classRoomRepository.countByDepartmentId(departmentId);
+        } else {
+            teachersCount = teacherRepository.count();
+            coursesCount = courseRepository.count();
+            divisionsCount = divisionRepository.count();
+            roomsCount = classRoomRepository.count();
+        }
+
+        // Calculate Room/Lab utilization percentage
+        long totalTimeSlots = timeSlotRepository.count();
+        if (totalTimeSlots == 0) {
+            totalTimeSlots = 6; // default fallback
+        }
+        long maxCapacity = roomsCount * 6 * totalTimeSlots; // 6 days * slots * rooms
+
+        // Count active (PUBLISHED + DRAFT) timetable entries in this academic year
+        long bookedPeriods;
+        List<TimetableEntry> entries;
+        if (departmentId != null) {
+            entries = timetableRepo.findAll().stream()
+                .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+                .filter(e -> e.getDivision() != null && e.getDivision().getDepartment() != null && departmentId.equals(e.getDivision().getDepartment().getId()))
+                .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+                .toList();
+        } else {
+            entries = timetableRepo.findAll().stream()
+                .filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
+                .filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
+                .toList();
+        }
+        bookedPeriods = entries.size();
+
+        double overallUtilization = 0.0;
+        if (maxCapacity > 0) {
+            overallUtilization = ((double) bookedPeriods / maxCapacity) * 100.0;
+            overallUtilization = Math.round(overallUtilization * 10.0) / 10.0;
+        }
+
+        // Recent Activities: last 10 entries sorted by updatedAt
+        List<java.util.Map<String, Object>> recentActivities = entries.stream()
+            .sorted((a, b) -> {
+                if (a.getUpdatedAt() == null && b.getUpdatedAt() == null) return 0;
+                if (a.getUpdatedAt() == null) return 1;
+                if (b.getUpdatedAt() == null) return -1;
+                return b.getUpdatedAt().compareTo(a.getUpdatedAt());
+            })
+            .limit(10)
+            .map(e -> {
+                java.util.Map<String, Object> act = new java.util.HashMap<>();
+                act.put("id", e.getId());
+                act.put("divisionName", e.getDivision() != null ? e.getDivision().getName() : "N/A");
+                act.put("courseName", e.getCourse() != null ? e.getCourse().getName() : "N/A");
+                act.put("courseCode", e.getCourse() != null ? e.getCourse().getCode() : "N/A");
+                act.put("teacherName", e.getTeacher() != null ? e.getTeacher().getName() : "N/A");
+                act.put("roomName", e.getRoom() != null ? e.getRoom().getName() : "N/A");
+                act.put("dayOfWeek", e.getDayOfWeek() != null ? e.getDayOfWeek().name() : "N/A");
+                act.put("slotName", e.getTimeSlot() != null ? e.getTimeSlot().getSlotName() : "N/A");
+                act.put("status", e.getStatus() != null ? e.getStatus().name() : "N/A");
+                act.put("updatedAt", e.getUpdatedAt() != null ? e.getUpdatedAt() : e.getCreatedAt());
+                return act;
+            })
+            .toList();
+
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        stats.put("teachersCount", teachersCount);
+        stats.put("coursesCount", coursesCount);
+        stats.put("divisionsCount", divisionsCount);
+        stats.put("roomsCount", roomsCount);
+        stats.put("overallUtilization", overallUtilization);
+        stats.put("recentActivities", recentActivities);
+
+        return stats;
     }
 }

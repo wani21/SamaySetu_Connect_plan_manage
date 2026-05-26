@@ -21,4 +21,5 @@ public interface Teacher_Repo extends JpaRepository<TeacherEntity, Long> {
     // Find teachers pending approval (email verified but not approved)
     java.util.List<TeacherEntity> findByIsApprovedAndIsEmailVerified(Boolean isApproved, Boolean isEmailVerified);
 
+    long countByDepartmentId(Long departmentId);
 }

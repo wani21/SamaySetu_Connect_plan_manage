@@ -7,5 +7,5 @@ import com.College.timetable.Entity.ClassRoom;
 
 @Repository
 public interface Room_repo extends JpaRepository<ClassRoom, Long> {
-	
+	long countByDepartmentId(Long departmentId);
 }
