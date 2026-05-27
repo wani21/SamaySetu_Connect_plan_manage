@@ -13,6 +13,10 @@ import { DepartmentsPage } from '../components/admin/DepartmentsPage';
 import { CoursesPage } from '../components/admin/CoursesPage';
 import { DivisionsPage } from '../components/admin/DivisionsPage';
 import { TimetableExportPage } from './admin/TimetableExportPage';
+import { BatchesPage } from '../components/admin/BatchesPage';
+import { RoomTimetablesPage } from '../components/admin/RoomTimetablesPage';
+import { LabTimetablesPage } from '../components/admin/LabTimetablesPage';
+import { FacultyTimetablesPage } from '../components/admin/FacultyTimetablesPage';
 
 export const AdminDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -34,12 +38,16 @@ export const AdminDashboard: React.FC = () => {
             <Route path="academic-structure" element={<AcademicStructurePage />} />
             <Route path="staff" element={<StaffManagementPage />} />
             <Route path="rooms" element={<RoomsPage />} />
+            <Route path="room-timetables" element={<RoomTimetablesPage />} />
+            <Route path="lab-timetables" element={<LabTimetablesPage />} />
+            <Route path="faculty-timetables" element={<FacultyTimetablesPage />} />
             <Route path="time-slots" element={<TimeSlotsPage />} />
             <Route path="timetable" element={<TimetableManagementPage />} />
             <Route path="timetable-export" element={<TimetableExportPage />} />
             <Route path="departments" element={<DepartmentsPage />} />
             <Route path="courses" element={<CoursesPage />} />
             <Route path="divisions" element={<DivisionsPage />} />
+            <Route path="batches" element={<BatchesPage />} />
             <Route path="teachers" element={<Navigate to="/admin/staff" replace />} />
             <Route path="profile" element={<AdminProfilePage />} />
             <Route path="/" element={<Navigate to="dashboard" replace />} />

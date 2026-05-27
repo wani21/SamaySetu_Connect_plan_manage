@@ -33,6 +33,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
 
   // Build admin-layout links based on role
   const getAdminLinks = () => {
+    const isInstitutionAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+
     const links = [
       { to: '/admin/dashboard', icon: FiHome, label: 'Dashboard' },
     ];
@@ -40,26 +42,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     // Academic Structure — all admin-layout roles
     links.push({ to: '/admin/academic-structure', icon: FiLayers, label: 'Academic Structure' });
 
-    // Faculty management — ADMIN and HOD only
-    if (role === 'ADMIN' || role === 'HOD') {
+    // Batches — all admin-layout roles
+    links.push({ to: '/admin/batches', icon: FiLayers, label: 'Batches' });
+
+    // Faculty management — ADMIN, SUPER_ADMIN, DEPARTMENT_ADMIN, and HOD
+    if (isInstitutionAdmin || role === 'DEPARTMENT_ADMIN' || role === 'HOD') {
       links.push({ to: '/admin/staff', icon: FiUsers, label: 'Faculty' });
     }
 
     // Rooms — all admin-layout roles
     links.push({ to: '/admin/rooms', icon: FiGrid, label: 'Rooms' });
 
-    // Time Slots — ADMIN and TIMETABLE_COORDINATOR
-    if (role === 'ADMIN' || role === 'TIMETABLE_COORDINATOR') {
+    // Room Timetables — all admin-layout roles
+    links.push({ to: '/admin/room-timetables', icon: FiGrid, label: 'Room Timetables' });
+
+    // Lab Timetables — all admin-layout roles
+    links.push({ to: '/admin/lab-timetables', icon: FiGrid, label: 'Lab Timetables' });
+
+    // Faculty Timetables — all admin-layout roles
+    links.push({ to: '/admin/faculty-timetables', icon: FiUsers, label: 'Faculty Timetables' });
+
+    // Time Slots — ADMIN, SUPER_ADMIN, DEPARTMENT_ADMIN, and TIMETABLE_COORDINATOR
+    if (isInstitutionAdmin || role === 'DEPARTMENT_ADMIN' || role === 'TIMETABLE_COORDINATOR') {
       links.push({ to: '/admin/time-slots', icon: FiClock, label: 'Time Slots' });
     }
 
     // Timetable — all admin-layout roles
     links.push({ to: '/admin/timetable', icon: FiCalendar, label: 'Timetable Builder' });
 
-    // Timetable Export — ADMIN only
-    if (role === 'ADMIN') {
-      links.push({ to: '/admin/timetable-export', icon: FiDownload, label: 'Timetable Export' });
-    }
+    // Timetable Export — all admin-layout roles
+    links.push({ to: '/admin/timetable-export', icon: FiDownload, label: 'Exports' });
 
     return links;
   };

@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,40 +18,64 @@ import org.springframework.web.bind.annotation.RestController;
 import com.College.timetable.Entity.CourseEntity;
 import com.College.timetable.Entity.Semester;
 import com.College.timetable.Service.CourseService;
+import com.College.timetable.Service.DepartmentAuthorizationService;
 
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/api/courses")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
 public class CourseController {
 	
 	@Autowired
 	private CourseService courseService;
+
+	@Autowired
+	private DepartmentAuthorizationService authService;
 	
 	@PostMapping
 	public ResponseEntity<CourseEntity> addCourse(@Valid @RequestBody CourseEntity cor) {
+		if (cor.getDepartment() != null && cor.getDepartment().getId() != null) {
+			authService.checkDepartmentAccess(cor.getDepartment().getId());
+		} else {
+			authService.checkSuperAdminAccess();
+		}
 		CourseEntity saved = courseService.add(cor);
 		return ResponseEntity.ok(saved);
 	}
 	
 	@GetMapping
 	public ResponseEntity<List<CourseEntity>> getAllCourses() {
-		return ResponseEntity.ok(courseService.getAll());
+		List<CourseEntity> all = courseService.getAll();
+		if (authService.isInstitutionalAdmin()) {
+			return ResponseEntity.ok(all);
+		}
+		Long deptId = authService.getCurrentUser().getDepartment().getId();
+		List<CourseEntity> filtered = all.stream()
+			.filter(c -> c.getDepartment() != null && deptId.equals(c.getDepartment().getId()))
+			.toList();
+		return ResponseEntity.ok(filtered);
 	}
 	
 	@GetMapping("/{id}")
 	public ResponseEntity<CourseEntity> getCourseById(@PathVariable Long id) {
+		authService.checkCourseAccess(id);
 		return ResponseEntity.ok(courseService.getById(id));
 	}
 	
 	@PutMapping("/{id}")
 	public ResponseEntity<CourseEntity> updateCourse(@PathVariable Long id, @Valid @RequestBody CourseEntity cor) {
+		authService.checkCourseAccess(id);
+		if (cor.getDepartment() != null && cor.getDepartment().getId() != null) {
+			authService.checkDepartmentAccess(cor.getDepartment().getId());
+		}
 		CourseEntity updated = courseService.update(id, cor);
 		return ResponseEntity.ok(updated);
 	}
 	
 	@DeleteMapping("/{id}")
 	public ResponseEntity<String> deleteCourse(@PathVariable Long id) {
+		authService.checkCourseAccess(id);
 		courseService.delete(id);
 		return ResponseEntity.ok("Course deleted successfully");
 	}
@@ -71,6 +96,7 @@ public class CourseController {
 		@RequestParam Long academicYearId,
 		@RequestParam(required = false) String semester
 	) {
+		authService.checkDivisionAccess(divisionId);
 		List<java.util.Map<String, Object>> available = courseService.getAvailableCoursesWithCredits(
 			divisionId, academicYearId, semester != null ? Semester.valueOf(semester) : null
 		);
@@ -90,6 +116,8 @@ public class CourseController {
 		@RequestParam Long academicYearId,
 		@RequestParam(required = false) String semester
 	) {
+		authService.checkCourseAccess(courseId);
+		authService.checkDivisionAccess(divisionId);
 		List<java.util.Map<String, Object>> available = courseService.getAvailableBatchesForCourse(
 			courseId, divisionId, academicYearId, semester != null ? Semester.valueOf(semester) : null
 		);

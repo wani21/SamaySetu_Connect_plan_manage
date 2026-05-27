@@ -1,10 +1,11 @@
 // User & Auth types
 export interface User {
   email: string;
-  role: 'ADMIN' | 'TEACHER' | 'HOD' | 'TIMETABLE_COORDINATOR';
+  role: 'ADMIN' | 'SUPER_ADMIN' | 'DEPARTMENT_ADMIN' | 'HOD' | 'TIMETABLE_COORDINATOR' | 'TEACHER';
   token: string;
   name?: string;
   firstLogin?: boolean;
+  departmentId?: number; // Include department ID if present
 }
 
 export interface LoginRequest {
@@ -52,6 +53,11 @@ export interface Division {
   departmentId?: number;
   classTeacherId?: number;
   strength?: number;
+  year?: number;
+  branch?: string;
+  totalStudents?: number;
+  department?: Department;
+  academicYear?: AcademicYear;
 }
 
 export interface Batch {
@@ -86,6 +92,8 @@ export interface Teacher {
   designation?: string;
   approvalStatus?: string;
   isApproved?: boolean;
+  minWeeklyHours?: number;
+  maxWeeklyHours?: number;
 }
 
 export interface TimetableEntry {
@@ -118,13 +126,25 @@ export interface PaginatedResponse<T> {
 
 // Dashboard types
 export interface DashboardStats {
-  totalTeachers: number;
-  totalCourses: number;
-  totalDivisions: number;
-  totalRooms: number;
-  totalDepartments: number;
-  totalBatches: number;
-  totalTimeSlots: number;
+  teachersCount: number;
+  coursesCount: number;
+  divisionsCount: number;
+  roomsCount: number;
+  overallUtilization: number;
+  recentActivities: RecentActivity[];
+}
+
+export interface RecentActivity {
+  id: number;
+  divisionName: string;
+  courseName: string;
+  courseCode: string;
+  teacherName: string;
+  roomName: string;
+  dayOfWeek: string;
+  slotName: string;
+  status: string;
+  updatedAt: string;
 }
 
 export interface StaffMember {

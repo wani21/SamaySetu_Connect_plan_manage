@@ -27,19 +27,21 @@ public class TimetableController {
     private final TimetableService timetableService;
     private final com.College.timetable.Service.TimetableValidationService validationService;
     private final com.College.timetable.Service.TimetableExportService exportService;
+    private final com.College.timetable.Service.DepartmentAuthorizationService authService;
 
     // ---------------------------------------------------------------
     // EXPORT endpoints — PDF & Excel download (semester-specific)
     // ---------------------------------------------------------------
 
     @GetMapping("/export/division/{divisionId}/pdf")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<byte[]> exportDivisionPDF(
         @PathVariable Long divisionId,
         @RequestParam Long academicYearId,
         @RequestParam String semester
     ) {
         try {
+            authService.checkDivisionAccess(divisionId);
             byte[] pdf = exportService.generateDivisionPDF(divisionId, academicYearId, Semester.valueOf(semester));
             return ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
@@ -53,13 +55,14 @@ public class TimetableController {
     }
 
     @GetMapping("/export/division/{divisionId}/excel")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<byte[]> exportDivisionExcel(
         @PathVariable Long divisionId,
         @RequestParam Long academicYearId,
         @RequestParam String semester
     ) {
         try {
+            authService.checkDivisionAccess(divisionId);
             byte[] excel = exportService.generateDivisionExcel(divisionId, academicYearId, Semester.valueOf(semester));
             return ResponseEntity.ok()
                 .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -73,11 +76,13 @@ public class TimetableController {
     }
 
     @GetMapping("/export/teacher/{teacherId}/pdf")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR', 'TEACHER')")
     public ResponseEntity<byte[]> exportTeacherPDF(
         @PathVariable Long teacherId,
         @RequestParam Long academicYearId
     ) {
         try {
+            authService.checkTeacherAccess(teacherId);
             byte[] pdf = exportService.generateTeacherPDF(teacherId, academicYearId);
             return ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
@@ -89,17 +94,99 @@ public class TimetableController {
     }
 
     @GetMapping("/export/teacher/{teacherId}/excel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR', 'TEACHER')")
     public ResponseEntity<byte[]> exportTeacherExcel(
         @PathVariable Long teacherId,
         @RequestParam Long academicYearId
     ) {
         try {
+            authService.checkTeacherAccess(teacherId);
             byte[] excel = exportService.generateTeacherExcel(teacherId, academicYearId);
             return ResponseEntity.ok()
                 .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .header("Content-Disposition", "attachment; filename=timetable_teacher_" + teacherId + ".xlsx")
                 .body(excel);
         } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/export/department/{departmentId}/pdf")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<byte[]> exportDepartmentPDF(
+        @PathVariable Long departmentId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        try {
+            authService.checkDepartmentAccess(departmentId);
+            byte[] pdf = exportService.generateDepartmentPDF(departmentId, academicYearId, Semester.valueOf(semester));
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/pdf")
+                .header("Content-Disposition", "attachment; filename=timetable_department_" + departmentId + "_" + semester + ".pdf")
+                .body(pdf);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/export/department/{departmentId}/excel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<byte[]> exportDepartmentExcel(
+        @PathVariable Long departmentId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        try {
+            authService.checkDepartmentAccess(departmentId);
+            byte[] excel = exportService.generateDepartmentExcel(departmentId, academicYearId, Semester.valueOf(semester));
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header("Content-Disposition", "attachment; filename=timetable_department_" + departmentId + "_" + semester + ".xlsx")
+                .body(excel);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/export/room/{roomId}/pdf")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<byte[]> exportRoomPDF(
+        @PathVariable Long roomId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        try {
+            authService.checkRoomAccess(roomId);
+            byte[] pdf = exportService.generateRoomPDF(roomId, academicYearId, Semester.valueOf(semester));
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/pdf")
+                .header("Content-Disposition", "attachment; filename=timetable_room_" + roomId + "_" + semester + ".pdf")
+                .body(pdf);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/export/room/{roomId}/excel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<byte[]> exportRoomExcel(
+        @PathVariable Long roomId,
+        @RequestParam Long academicYearId,
+        @RequestParam String semester
+    ) {
+        try {
+            authService.checkRoomAccess(roomId);
+            byte[] excel = exportService.generateRoomExcel(roomId, academicYearId, Semester.valueOf(semester));
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header("Content-Disposition", "attachment; filename=timetable_room_" + roomId + "_" + semester + ".xlsx")
+                .body(excel);
+        } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -135,6 +222,39 @@ public class TimetableController {
     ) {
         return ResponseEntity.ok(
             timetableService.getTeacherTimetable(teacherId, academicYearId)
+        );
+    }
+
+    /**
+     * GET /api/timetable/department/{departmentId}?academicYearId=1
+     * Get PUBLISHED timetable for an entire department (faculty read-only view)
+     * Served from Redis cache
+     */
+    @GetMapping("/department/{departmentId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR', 'TEACHER')")
+    public ResponseEntity<List<TimetableEntry>> getDepartmentTimetable(
+        @PathVariable Long departmentId,
+        @RequestParam Long academicYearId
+    ) {
+        authService.checkDepartmentAccess(departmentId);
+        return ResponseEntity.ok(
+            timetableService.getDepartmentTimetable(departmentId, academicYearId)
+        );
+    }
+
+    /**
+     * GET /api/timetable/room/{roomId}?academicYearId=1
+     * Get published and draft timetable entries for a room (weekly occupancy view)
+     */
+    @GetMapping("/room/{roomId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR', 'TEACHER')")
+    public ResponseEntity<List<TimetableEntry>> getRoomTimetable(
+        @PathVariable Long roomId,
+        @RequestParam Long academicYearId
+    ) {
+        authService.checkRoomAccess(roomId);
+        return ResponseEntity.ok(
+            timetableService.getRoomTimetable(roomId, academicYearId)
         );
     }
 
@@ -183,8 +303,9 @@ public class TimetableController {
      * Conflict check runs before saving — returns 409 if conflict found
      */
     @PostMapping("/entries")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<?> addEntry(@Valid @RequestBody CreateTimetableEntryDTO dto) {
+        authService.checkDivisionAccess(dto.getDivisionId());
         // Debug logging
         System.out.println("DEBUG: Received DTO - batchId: " + dto.getBatchId() + ", labSessionGroupId: " + dto.getLabSessionGroupId());
         
@@ -207,11 +328,13 @@ public class TimetableController {
      * Update an existing DRAFT entry
      */
     @PutMapping("/entries/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<?> updateEntry(
         @PathVariable Long id,
         @Valid @RequestBody CreateTimetableEntryDTO dto
     ) {
+        authService.checkTimetableEntryAccess(id);
+        authService.checkDivisionAccess(dto.getDivisionId());
         try {
             TimetableEntry entry = timetableService.updateEntry(id, dto);
             return ResponseEntity.ok(entry);
@@ -230,8 +353,9 @@ public class TimetableController {
      * Delete a DRAFT entry
      */
     @DeleteMapping("/entries/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, String>> deleteEntry(@PathVariable Long id) {
+        authService.checkTimetableEntryAccess(id);
         timetableService.deleteEntry(id);
         return ResponseEntity.ok(Map.of("message", "Entry deleted successfully"));
     }
@@ -246,23 +370,25 @@ public class TimetableController {
      * Run pre-publish validation — returns errors (blocking) and warnings (informational).
      */
     @GetMapping("/validate")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<?> validateTimetable(
         @RequestParam Long divisionId,
         @RequestParam Long academicYearId
     ) {
+        authService.checkDivisionAccess(divisionId);
         var result = validationService.validate(divisionId, academicYearId);
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/publish")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<?> publishTimetable(
         @RequestParam Long divisionId,
         @RequestParam Long academicYearId,
         @RequestParam String semester,
         @RequestParam(defaultValue = "false") boolean force
     ) {
+        authService.checkDivisionAccess(divisionId);
         // Run validation before publishing (validation will be updated to be semester-aware)
         var validation = validationService.validate(divisionId, academicYearId);
 
@@ -288,12 +414,13 @@ public class TimetableController {
      * Archive current published timetable (end of semester)
      */
     @PostMapping("/archive")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, Object>> archiveTimetable(
         @RequestParam Long divisionId,
         @RequestParam Long academicYearId,
         @RequestParam String semester
     ) {
+        authService.checkDivisionAccess(divisionId);
         int count = timetableService.archiveTimetable(divisionId, academicYearId, Semester.valueOf(semester));
         return ResponseEntity.ok(Map.of(
             "message", "Timetable archived successfully for " + semester,
@@ -306,12 +433,13 @@ public class TimetableController {
      * Clear all DRAFT entries for a semester — start fresh
      */
     @DeleteMapping("/draft")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, Object>> clearDraft(
         @RequestParam Long divisionId,
         @RequestParam Long academicYearId,
         @RequestParam String semester
     ) {
+        authService.checkDivisionAccess(divisionId);
         int count = timetableService.clearDraft(divisionId, academicYearId, Semester.valueOf(semester));
         return ResponseEntity.ok(Map.of(
             "message", "Draft cleared for " + semester,
@@ -328,10 +456,11 @@ public class TimetableController {
      * Create a lab session group FIRST, then add batch entries pointing to it
      */
     @PostMapping("/lab-groups")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<LabSessionGroup> createLabSessionGroup(
         @Valid @RequestBody CreateLabSessionGroupDTO dto
     ) {
+        authService.checkDivisionAccess(dto.getDivisionId());
         LabSessionGroup group = timetableService.createLabSessionGroup(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(group);
     }
@@ -341,10 +470,11 @@ public class TimetableController {
      * Single-step lab session creation — creates group + all batch entries at once.
      */
     @PostMapping("/lab-session")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<?> createLabSession(
         @Valid @RequestBody com.College.timetable.IO.CreateLabSessionRequest request
     ) {
+        authService.checkDivisionAccess(request.getDivisionId());
         try {
             Map<String, Object> result = timetableService.createLabSession(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
@@ -360,8 +490,9 @@ public class TimetableController {
      * Delete entire lab session group and all its entries.
      */
     @DeleteMapping("/lab-groups/{groupId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, Object>> deleteLabGroup(@PathVariable Long groupId) {
+        authService.checkLabSessionGroupAccess(groupId);
         int deleted = timetableService.deleteLabSessionGroup(groupId);
         return ResponseEntity.ok(Map.of(
             "message", "Lab session group deleted",
@@ -374,12 +505,14 @@ public class TimetableController {
      * Only copies non-lab entries. Lab sessions must be configured separately.
      */
     @PostMapping("/copy")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, Object>> copyTimetable(
         @RequestParam Long sourceDivisionId,
         @RequestParam Long targetDivisionId,
         @RequestParam Long academicYearId
     ) {
+        authService.checkDivisionAccess(sourceDivisionId);
+        authService.checkDivisionAccess(targetDivisionId);
         int copied = timetableService.copyDraftEntries(sourceDivisionId, targetDivisionId, academicYearId);
         return ResponseEntity.ok(Map.of(
             "message", "Timetable copied successfully",
@@ -456,7 +589,7 @@ public class TimetableController {
      * Get aggregated teacher workload, room utilization, and slot density statistics.
      */
     @GetMapping("/analytics")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
     public ResponseEntity<Map<String, Object>> getAnalytics(@RequestParam Long academicYearId) {
         var teacherWorkloads = timetableService.getTeacherWorkloads(academicYearId);
         var roomUtilizations = timetableService.getRoomUtilizations(academicYearId);
@@ -467,5 +600,22 @@ public class TimetableController {
             "roomBookingCounts", roomUtilizations,
             "slotDensity", slotDensity
         ));
+    }
+
+    /**
+     * GET /api/timetable/dashboard-stats?academicYearId=1
+     * Get unified dashboard statistics for counts, room occupancy utilization, and recent timetable changes.
+     */
+    @GetMapping("/dashboard-stats")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR')")
+    public ResponseEntity<Map<String, Object>> getDashboardStats(
+        @RequestParam Long academicYearId,
+        @RequestParam(required = false) Long departmentId
+    ) {
+        if (!authService.isInstitutionalAdmin()) {
+            Long userDeptId = authService.getCurrentUser().getDepartment().getId();
+            return ResponseEntity.ok(timetableService.getDashboardStats(userDeptId, academicYearId));
+        }
+        return ResponseEntity.ok(timetableService.getDashboardStats(departmentId, academicYearId));
     }
 }

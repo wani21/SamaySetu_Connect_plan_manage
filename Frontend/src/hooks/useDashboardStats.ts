@@ -2,24 +2,22 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 
 interface DashboardStats {
-  totalTeachers: number;
-  totalCourses: number;
-  totalDepartments: number;
-  totalRooms: number;
-  totalDivisions: number;
-  totalAcademicYears: number;
-  totalTimeSlots: number;
+  teachersCount: number;
+  coursesCount: number;
+  divisionsCount: number;
+  roomsCount: number;
+  overallUtilization: number;
+  recentActivities: any[];
 }
 
 export const useDashboardStats = () => {
   const [stats, setStats] = useState<DashboardStats>({
-    totalTeachers: 0,
-    totalCourses: 0,
-    totalDepartments: 0,
-    totalRooms: 0,
-    totalDivisions: 0,
-    totalAcademicYears: 0,
-    totalTimeSlots: 0,
+    teachersCount: 0,
+    coursesCount: 0,
+    divisionsCount: 0,
+    roomsCount: 0,
+    overallUtilization: 0,
+    recentActivities: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,41 +28,26 @@ export const useDashboardStats = () => {
         setIsLoading(true);
         setError(null);
 
-        // Fetch all data in parallel
-        const [
-          teachersRes,
-          coursesRes,
-          departmentsRes,
-          roomsRes,
-          divisionsRes,
-          academicYearsRes,
-          timeSlotsRes,
-        ] = await Promise.all([
-          api.get('/api/teachers'),
-          api.get('/admin/api/courses'),
-          api.get('/admin/api/departments'),
-          api.get('/admin/api/rooms'),
-          api.get('/admin/api/divisions'),
-          api.get('/admin/api/academic-years'),
-          api.get('/admin/api/time-slots'),
-        ]);
+        // Get current academic year
+        const currentYearRes = await api.get('/api/academic-years/current');
+        const yearId = currentYearRes.data?.id;
+        if (!yearId) {
+          throw new Error('Active academic year not configured. Configure it in Academic Structure first.');
+        }
 
-        // Filter to count only teachers (exclude admins)
-        const teachersData = Array.isArray(teachersRes.data) ? teachersRes.data : [];
-        const teachersCount = teachersData.filter((user: any) => user.role === 'TEACHER').length;
-
-        setStats({
-          totalTeachers: teachersCount,
-          totalCourses: coursesRes.data?.length || 0,
-          totalDepartments: departmentsRes.data?.length || 0,
-          totalRooms: roomsRes.data?.length || 0,
-          totalDivisions: divisionsRes.data?.length || 0,
-          totalAcademicYears: academicYearsRes.data?.length || 0,
-          totalTimeSlots: timeSlotsRes.data?.length || 0,
+        // Call the unified, role-based dashboard stats endpoint
+        const statsRes = await api.get(`/api/timetable/dashboard-stats?academicYearId=${yearId}`);
+        setStats(statsRes.data || {
+          teachersCount: 0,
+          coursesCount: 0,
+          divisionsCount: 0,
+          roomsCount: 0,
+          overallUtilization: 0,
+          recentActivities: [],
         });
       } catch (err: any) {
         console.error('Error fetching dashboard stats:', err);
-        setError(err.response?.data?.message || 'Failed to fetch statistics');
+        setError(err.response?.data?.message || err.message || 'Failed to fetch statistics');
       } finally {
         setIsLoading(false);
       }

@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +34,7 @@ import com.College.timetable.IO.ManualStaffRequest;
 import com.College.timetable.Repository.Dep_repo;
 import com.College.timetable.Service.AdminService;
 import com.College.timetable.Service.CourseService;
+import com.College.timetable.Service.DepartmentAuthorizationService;
 
 import jakarta.validation.Valid;
 
@@ -40,7 +42,7 @@ import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/admin")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD')")
 public class AdminController {
 
     private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
@@ -53,6 +55,9 @@ public class AdminController {
 
     @Autowired
     private Dep_repo departmentRepository;
+
+    @Autowired
+    private DepartmentAuthorizationService authService;
 
     // Configurable per environment:
     // Dev → "mitaoe@123" (known password for testing)
@@ -84,6 +89,18 @@ public class AdminController {
             }
 
             List<TeacherEntity> staffList = parseCSV(file);
+            
+            // Automatically assign to department admin's department if not institutional admin
+            if (!authService.isInstitutionalAdmin()) {
+                DepartmentEntity dept = authService.getCurrentUser().getDepartment();
+                if (dept == null) {
+                    throw new AccessDeniedException("Access denied: You must be associated with a department to upload staff.");
+                }
+                for (TeacherEntity teacher : staffList) {
+                    teacher.setDepartment(dept);
+                }
+            }
+            
             int created = adminService.createStaffFromCSV(staffList);
 
             return ResponseEntity.ok("Successfully created " + created + " staff members");
@@ -113,8 +130,8 @@ public class AdminController {
 
             // Role from request — default to TEACHER if not specified
             String role = request.getRole() != null ? request.getRole().toUpperCase() : "TEACHER";
-            if (!List.of("TEACHER", "HOD", "TIMETABLE_COORDINATOR").contains(role)) {
-                return ResponseEntity.badRequest().body("Invalid role. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR");
+            if (!List.of("TEACHER", "HOD", "TIMETABLE_COORDINATOR", "DEPARTMENT_ADMIN").contains(role)) {
+                return ResponseEntity.badRequest().body("Invalid role. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR, DEPARTMENT_ADMIN");
             }
             teacher.setRole(role);
             teacher.setIsActive(true);
@@ -122,8 +139,15 @@ public class AdminController {
             teacher.setIsEmailVerified(true);
             teacher.setIsFirstLogin(true);
 
-            // Optional department assignment
-            if (request.getDepartmentId() != null) {
+            // Enforce department checks
+            if (!authService.isInstitutionalAdmin()) {
+                Long callerDeptId = authService.getCurrentUser().getDepartment().getId();
+                if (request.getDepartmentId() != null && !request.getDepartmentId().equals(callerDeptId)) {
+                    throw new AccessDeniedException("Access denied: Cannot assign staff to another department");
+                }
+                DepartmentEntity dept = authService.getCurrentUser().getDepartment();
+                teacher.setDepartment(dept);
+            } else if (request.getDepartmentId() != null) {
                 DepartmentEntity dept = departmentRepository.findById(request.getDepartmentId())
                         .orElseThrow(() -> new RuntimeException("Department not found with ID: " + request.getDepartmentId()));
                 teacher.setDepartment(dept);
@@ -164,6 +188,14 @@ public class AdminController {
     @PutMapping("/update-staff/{id}")
     public ResponseEntity<TeacherEntity> updateStaff(@PathVariable Long id, @Valid @RequestBody AdminStaffUpdateRequest request) {
         try {
+            authService.checkTeacherAccess(id);
+            if (!authService.isInstitutionalAdmin()) {
+                Long callerDeptId = authService.getCurrentUser().getDepartment().getId();
+                if (request.getDepartmentId() != null && !request.getDepartmentId().equals(callerDeptId)) {
+                    throw new AccessDeniedException("Access denied: Cannot move staff to another department");
+                }
+                request.setDepartmentId(callerDeptId);
+            }
             TeacherEntity updated = adminService.updateStaff(id, request);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
@@ -196,6 +228,8 @@ public class AdminController {
             if (contentType != null && !contentType.equals("text/csv") && !contentType.equals("application/csv")) {
                 return ResponseEntity.badRequest().body("Invalid file format. Please upload a CSV file");
             }
+
+            authService.checkDepartmentAccess(departmentId);
 
             DepartmentEntity department = departmentRepository.findById(departmentId)
                 .orElseThrow(() -> new RuntimeException("Department not found"));

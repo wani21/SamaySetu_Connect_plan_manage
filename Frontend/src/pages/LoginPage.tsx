@@ -96,7 +96,7 @@ export const LoginPage: React.FC = () => {
     } catch (error: any) {
       console.error('Login error:', error);
       let message = 'Login failed. Please check your credentials.';
-      let fieldErrors: any = {};
+      const fieldErrors: any = {};
       
       // Handle specific error cases
       if (error.response) {

@@ -7,5 +7,5 @@ import com.College.timetable.Entity.CourseEntity;
 
 @Repository
 public interface Course_repo extends JpaRepository<CourseEntity, Long> {
-	
+	long countByDepartmentId(Long departmentId);
 }

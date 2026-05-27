@@ -216,6 +216,15 @@ public interface TimetableEntry_repo extends JpaRepository<TimetableEntry, Long>
         );
 
         /**
+         * Get published timetable for a department
+         */
+        List<TimetableEntry> findByDivisionDepartmentIdAndAcademicYearIdAndStatus(
+            Long departmentId,
+            Long academicYearId,
+            TimetableStatus status
+        );
+
+        /**
          * Get published timetable for a teacher
          */
         List<TimetableEntry> findByTeacherIdAndAcademicYearIdAndStatus(

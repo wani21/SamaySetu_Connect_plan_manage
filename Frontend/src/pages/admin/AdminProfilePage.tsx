@@ -265,7 +265,7 @@ export const AdminProfilePage: React.FC = () => {
         <Card>
           <div className="text-center">
             <div className="text-3xl font-bold text-primary-600 mb-2">
-              {statsLoading ? '...' : stats.totalTeachers}
+              {statsLoading ? '...' : stats.teachersCount}
             </div>
             <p className="text-sm text-gray-600">Teachers Managed</p>
           </div>
@@ -273,7 +273,7 @@ export const AdminProfilePage: React.FC = () => {
         <Card>
           <div className="text-center">
             <div className="text-3xl font-bold text-green-600 mb-2">
-              {statsLoading ? '...' : stats.totalCourses}
+              {statsLoading ? '...' : stats.coursesCount}
             </div>
             <p className="text-sm text-gray-600">Courses Created</p>
           </div>
@@ -281,9 +281,9 @@ export const AdminProfilePage: React.FC = () => {
         <Card>
           <div className="text-center">
             <div className="text-3xl font-bold text-purple-600 mb-2">
-              {statsLoading ? '...' : stats.totalDepartments}
+              {statsLoading ? '...' : stats.divisionsCount}
             </div>
-            <p className="text-sm text-gray-600">Departments</p>
+            <p className="text-sm text-gray-600">Divisions Managed</p>
           </div>
         </Card>
       </div>

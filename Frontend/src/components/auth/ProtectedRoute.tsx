@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 // Roles that get the admin-style dashboard layout
-const ADMIN_ROLES = ['ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'HOD', 'TIMETABLE_COORDINATOR'];
 
 // Helper function to validate JWT format (basic check)
 const isValidJWT = (token: string | undefined): boolean => {
