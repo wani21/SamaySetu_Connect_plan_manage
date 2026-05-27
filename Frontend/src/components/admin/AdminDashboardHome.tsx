@@ -8,7 +8,7 @@ import { RecentActivity } from '../../types';
 
 export const AdminDashboardHome: React.FC = () => {
   const navigate = useNavigate();
-  const { stats, isLoading } = useDashboardStats();
+  const { stats, isLoading, error } = useDashboardStats();
 
   const quickActions = [
     { label: 'Timetable Builder', icon: '🗓️', path: '/admin/timetable' },
@@ -19,6 +19,17 @@ export const AdminDashboardHome: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-start gap-3">
+          <div className="text-red-500 mt-0.5">⚠️</div>
+          <div>
+            <h4 className="font-bold text-red-800">Dashboard Configuration Issue</h4>
+            <p className="text-sm text-red-700 mt-0.5">{error}</p>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

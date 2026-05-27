@@ -154,7 +154,7 @@ export const academicYearAPI = {
   create: (academicYearData: any) => api.post('/admin/api/academic-years', academicYearData),
   update: (id: number, academicYearData: any) => api.put(`/admin/api/academic-years/${id}`, academicYearData),
   delete: (id: number) => api.delete(`/admin/api/academic-years/${id}`),
-  getCurrent: () => api.get('/admin/api/academic-years/current'),
+  getCurrent: () => api.get('/api/academic-years/current'),
 };
 
 // Division API (Admin)

@@ -1716,7 +1716,7 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
               const courseBatches = Array.isArray(courseBatchesRes.data) ? courseBatchesRes.data : [];
 
               // 2. Intersect: batch must be free in the slot AND need the course
-              let intersected = courseBatches.filter((cb: any) =>
+              const intersected = courseBatches.filter((cb: any) =>
                 freeBatches.some((fb: any) => fb.id === cb.id)
               );
 

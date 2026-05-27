@@ -29,7 +29,7 @@ export const useDashboardStats = () => {
         setError(null);
 
         // Get current academic year
-        const currentYearRes = await api.get('/admin/api/academic-years/current');
+        const currentYearRes = await api.get('/api/academic-years/current');
         const yearId = currentYearRes.data?.id;
         if (!yearId) {
           throw new Error('Active academic year not configured. Configure it in Academic Structure first.');

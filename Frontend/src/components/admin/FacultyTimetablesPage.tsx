@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { teacherAdminAPI, timetableAPI, academicYearAPI, timeSlotAPI } from '../../services/api';
 import { Teacher, TimetableEntry, AcademicYear, TimeSlot } from '../../types';
-import { FiSearch, FiDownload, FiInfo, FiTrendingUp, FiCalendar, FiClock, FiBook, FiCheckCircle, FiActivity } from 'react-icons/fi';
+import { FiSearch, FiDownload, FiInfo, FiTrendingUp, FiClock, FiBook, FiCheckCircle, FiActivity } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export const FacultyTimetablesPage: React.FC = () => {
