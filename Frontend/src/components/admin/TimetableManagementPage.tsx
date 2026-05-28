@@ -43,18 +43,10 @@ const DraggableEntryCard: React.FC<{
     zIndex: isDragging ? 50 : 'auto' as any,
   } : { opacity: 1 };
 
-  // Helper function to get professor initials (first letter of each name part)
-  const getProfessorInitials = (name: string): string => {
-    if (!name) return '';
-    return name
-      .split(' ')
-      .map(part => part.charAt(0).toUpperCase())
-      .join('');
-  };
-
-  const professorInitials = entry.teacher?.name ? getProfessorInitials(entry.teacher.name) : '-';
+  // Use short name if available, otherwise show dash
+  const professorShortName = entry.teacher?.shortName || '-';
+  const courseShortName = entry.course?.shortName || entry.course?.name || '-';
   const roomLocation = entry.room?.roomNumber || '-';
-  const courseName = entry.course?.name || 'Unknown';
   const batchName = entry.batch?.name || '';
 
   return (
@@ -76,14 +68,14 @@ const DraggableEntryCard: React.FC<{
       
       {/* Display format based on course type */}
       {isLab ? (
-        // Lab format: Batch - Course Name - Professor Initials - Room Location
+        // Lab format: Batch - Course Short Name - Teacher Short Name - Room
         <p className={`font-semibold truncate text-purple-900`}>
-          {batchName} - {courseName} - {professorInitials} - {roomLocation}
+          {batchName} - {courseShortName} - {professorShortName} - {roomLocation}
         </p>
       ) : (
-        // Theory format: Course Name - Professor Initials - Room Location
+        // Theory format: Course Short Name - Teacher Short Name - Room
         <p className={`font-semibold truncate text-blue-900`}>
-          {courseName} - {professorInitials} - {roomLocation}
+          {courseShortName} - {professorShortName} - {roomLocation}
         </p>
       )}
       
@@ -1865,9 +1857,10 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({
       const workloadHours = analytics?.teacherWorkloads?.[t.id] || 0;
       const maxHours = t.maxWeeklyHours || 30;
       const isNearLimit = workloadHours >= maxHours * 0.9;
+      const displayName = t.shortName ? `${t.name} (${t.shortName})` : t.name;
       return {
         value: t.id.toString(),
-        label: t.name,
+        label: displayName,
         subLabel: `Dept: ${t.department?.name || 'N/A'} | Workload: ${workloadHours.toFixed(1)} / ${maxHours} hrs`,
         badge: isNearLimit ? 'NEAR LIMIT' : undefined,
       };

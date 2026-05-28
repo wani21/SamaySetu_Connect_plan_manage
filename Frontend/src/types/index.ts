@@ -37,10 +37,14 @@ export interface Department {
   hodName?: string;
 }
 
+export type CourseCategory = 'CORE' | 'NORMAL_ELECTIVE' | 'GLOBAL_ELECTIVE';
+
 export interface Course {
   id: number;
   name: string;
   code?: string;
+  shortName: string;
+  courseCategory?: CourseCategory;
   credits?: number;
   semester?: number;
   departmentId?: number;
@@ -63,7 +67,9 @@ export interface Division {
 export interface Batch {
   id: number;
   name: string;
+  strength: number;
   divisionId?: number;
+  division?: Division;
 }
 
 export interface Room {
@@ -86,6 +92,7 @@ export interface TimeSlot {
 export interface Teacher {
   id: number;
   name: string;
+  shortName: string;
   email: string;
   phone?: string;
   department?: string;

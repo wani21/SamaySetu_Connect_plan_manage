@@ -52,10 +52,21 @@ public class CourseEntity {
 	@Column(name = "code", nullable = false, unique = true)
 	private String code;
 	
+	@NotBlank(message = "Short name is required")
+	@Size(min = 2, max = 15, message = "Short name must be between 2 and 15 characters")
+	@jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z0-9 -]+$", message = "Short name must contain only letters, numbers, spaces, and hyphens")
+	@Column(name = "short_name", nullable = false, length = 15)
+	private String shortName;
+	
 	@NotNull(message = "Course type is required")
 	@Enumerated(EnumType.STRING)
 	@Column(name = "course_type", nullable = false)
 	private CourseType courseType;
+	
+	@NotNull(message = "Course category is required")
+	@Enumerated(EnumType.STRING)
+	@Column(name = "course_category", nullable = false)
+	private CourseCategory courseCategory;
 	
 	@Min(value = 1, message = "Credits must be at least 1")
 	@Column(nullable = false)

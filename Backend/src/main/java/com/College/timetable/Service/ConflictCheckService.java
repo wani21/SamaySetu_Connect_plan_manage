@@ -212,26 +212,9 @@ public class ConflictCheckService {
                 }
             }
 
-            // ── 7. ROOM TYPE ↔ COURSE TYPE MATCHING (warning, not blocking) ──
-            if (request.getCourseType() != null && room.getRoomType() != null) {
-                String courseType = request.getCourseType().toUpperCase();
-                String roomType = room.getRoomType().name().toUpperCase();
-
-                boolean mismatch = false;
-                if ("LAB".equals(courseType) && !"LAB".equals(roomType)) {
-                    mismatch = true;
-                } else if ("THEORY".equals(courseType) && "LAB".equals(roomType)) {
-                    mismatch = true;
-                }
-
-                if (mismatch) {
-                    conflicts.add(String.format(
-                        "Room type warning: Course is '%s' but room '%s' is type '%s'. Consider using a %s instead.",
-                        courseType, room.getName(), roomType,
-                        "LAB".equals(courseType) ? "lab room" : "classroom"
-                    ));
-                }
-            }
+            // ── 7. ROOM TYPE ↔ COURSE TYPE MATCHING ──
+            // REMOVED: Allow scheduling any course type in any room type
+            // Users have flexibility to use labs for theory and classrooms for labs if needed
         }
 
         // ── 8. TEACHER AVAILABILITY CHECK ──

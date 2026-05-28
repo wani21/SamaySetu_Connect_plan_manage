@@ -29,6 +29,7 @@ export const StaffManagementPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     employeeId: '',
+    shortName: '',
     email: '',
     phone: '',
     specialization: '',
@@ -38,6 +39,9 @@ export const StaffManagementPage: React.FC = () => {
     role: 'TEACHER',
   });
   const [errors, setErrors] = useState<any>({});
+  const [shortNameAvailable, setShortNameAvailable] = useState<boolean | null>(null);
+  const [shortNameSuggestions, setShortNameSuggestions] = useState<string[]>([]);
+  const [checkingShortName, setCheckingShortName] = useState(false);
 
   useEffect(() => {
     fetchStaff();
@@ -62,6 +66,61 @@ export const StaffManagementPage: React.FC = () => {
       setDepartments([]);
     }
   };
+
+  // Short name validation with debounce
+  const checkShortNameAvailability = async (shortName: string) => {
+    if (!shortName || shortName.length < 2) {
+      setShortNameAvailable(null);
+      setShortNameSuggestions([]);
+      return;
+    }
+
+    // Validate format (2-5 uppercase letters only)
+    if (!/^[A-Z]{2,5}$/.test(shortName)) {
+      setShortNameAvailable(false);
+      setErrors((prev: any) => ({ ...prev, shortName: 'Must be 2-5 uppercase letters only' }));
+      setShortNameSuggestions([]);
+      return;
+    }
+
+    setCheckingShortName(true);
+    try {
+      const response = await teacherAdminAPI.checkShortName(
+        shortName,
+        editingStaff?.id
+      );
+      
+      const data = response.data;
+      setShortNameAvailable(data.available);
+      
+      if (!data.available) {
+        setErrors((prev: any) => ({ ...prev, shortName: data.message }));
+        setShortNameSuggestions(data.suggestions || []);
+      } else {
+        setErrors((prev: any) => {
+          const newErrors = { ...prev };
+          delete newErrors.shortName;
+          return newErrors;
+        });
+        setShortNameSuggestions([]);
+      }
+    } catch (error) {
+      console.error('Error checking short name:', error);
+    } finally {
+      setCheckingShortName(false);
+    }
+  };
+
+  // Debounced short name check
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.shortName) {
+        checkShortNameAvailability(formData.shortName);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formData.shortName]);
 
   // CSV Upload handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,6 +183,7 @@ export const StaffManagementPage: React.FC = () => {
     setFormData({
       name: '',
       employeeId: '',
+      shortName: '',
       email: '',
       phone: '',
       specialization: '',
@@ -135,6 +195,8 @@ export const StaffManagementPage: React.FC = () => {
     setEditingStaff(null);
     setIsEditMode(false);
     setErrors({});
+    setShortNameAvailable(null);
+    setShortNameSuggestions([]);
   };
 
   const handleEdit = (staffMember: any) => {
@@ -143,6 +205,7 @@ export const StaffManagementPage: React.FC = () => {
     setFormData({
       name: staffMember.name || '',
       employeeId: staffMember.employeeId || '',
+      shortName: staffMember.shortName || '',
       email: staffMember.email || '',
       phone: staffMember.phone || '',
       specialization: staffMember.specialization || '',
@@ -151,6 +214,8 @@ export const StaffManagementPage: React.FC = () => {
       departmentId: staffMember.department?.id?.toString() || '',
       role: staffMember.role || 'TEACHER',
     });
+    setShortNameAvailable(true); // Existing short name is valid
+    setShortNameSuggestions([]);
     setShowModal(true);
   };
 
@@ -160,6 +225,9 @@ export const StaffManagementPage: React.FC = () => {
     const newErrors: any = {};
     if (!formData.name) newErrors.name = 'Name is required';
     if (!formData.employeeId) newErrors.employeeId = 'Employee ID is required';
+    if (!formData.shortName) newErrors.shortName = 'Short name is required';
+    else if (!/^[A-Z]{2,5}$/.test(formData.shortName)) newErrors.shortName = 'Must be 2-5 uppercase letters only';
+    else if (shortNameAvailable === false) newErrors.shortName = 'Short name is already taken';
     if (!formData.email) newErrors.email = 'Email is required';
     else if (!formData.email.endsWith(APP_CONFIG.COLLEGE_EMAIL_DOMAIN)) newErrors.email = 'Must be a college email';
     if (!formData.minWeeklyHours) newErrors.minWeeklyHours = 'Min hours required';
@@ -176,6 +244,7 @@ export const StaffManagementPage: React.FC = () => {
         const updateData = {
           name: formData.name,
           employeeId: formData.employeeId,
+          shortName: formData.shortName.toUpperCase(),
           email: formData.email,
           phone: formData.phone,
           specialization: formData.specialization,
@@ -189,6 +258,7 @@ export const StaffManagementPage: React.FC = () => {
         await adminAPI.createStaffManually({
           name: formData.name,
           employeeId: formData.employeeId,
+          shortName: formData.shortName.toUpperCase(),
           email: formData.email,
           phone: formData.phone,
           specialization: formData.specialization,
@@ -228,7 +298,8 @@ export const StaffManagementPage: React.FC = () => {
     const matchesSearch = searchTerm === '' || 
       s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
+      s.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.shortName?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDepartment = filterDepartment === '' || 
       s.department?.id?.toString() === filterDepartment;
@@ -293,7 +364,7 @@ export const StaffManagementPage: React.FC = () => {
                   <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by name, email, or employee ID..."
+                    placeholder="Search by name, short name, email, or employee ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="input-field pl-10"
@@ -334,7 +405,9 @@ export const StaffManagementPage: React.FC = () => {
                   {filteredStaff.map((s) => (
                     <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4">
-                        <div className="font-medium text-gray-900">{s.name}</div>
+                        <div className="font-medium text-gray-900">
+                          {s.name} {s.shortName && <span className="text-primary-600">({s.shortName})</span>}
+                        </div>
                         <div className="text-sm text-gray-500">{s.specialization}</div>
                       </td>
                       <td className="py-3 px-4 text-gray-600">{s.employeeId}</td>
@@ -521,6 +594,56 @@ export const StaffManagementPage: React.FC = () => {
               error={errors.employeeId}
               placeholder="EMP001"
             />
+            <div>
+              <Input
+                label="Short Name"
+                value={formData.shortName}
+                onChange={(e) => {
+                  const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                  if (value.length <= 5) {
+                    setFormData({ ...formData, shortName: value });
+                  }
+                }}
+                error={errors.shortName}
+                placeholder="APR"
+                maxLength={5}
+              />
+              {checkingShortName && (
+                <p className="mt-1 text-sm text-gray-500">Checking availability...</p>
+              )}
+              {shortNameAvailable === true && formData.shortName && (
+                <p className="mt-1 text-sm text-green-600 flex items-center gap-1">
+                  <FiCheck size={14} /> Available
+                </p>
+              )}
+              {shortNameAvailable === false && formData.shortName && (
+                <div className="mt-1">
+                  <p className="text-sm text-red-600 flex items-center gap-1">
+                    <FiX size={14} /> {errors.shortName}
+                  </p>
+                  {shortNameSuggestions.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-600 mb-1">Suggestions:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {shortNameSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, shortName: suggestion });
+                            }}
+                            className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-gray-500">2-5 uppercase letters only (A-Z)</p>
+            </div>
           </div>
 
           <Input

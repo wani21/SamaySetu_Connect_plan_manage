@@ -118,6 +118,8 @@ export const teacherAdminAPI = {
   getPendingApprovals: () => api.get('/api/teachers/pending-approvals'),
   approve: (id: number) => api.post(`/api/teachers/${id}/approve`),
   reject: (id: number, rejectionReason?: string) => api.post(`/api/teachers/${id}/reject`, rejectionReason),
+  checkShortName: (shortName: string, excludeId?: number) => 
+    api.get('/admin/api/teachers/check-short-name', { params: { shortName, excludeId } }),
 };
 
 // Course API (Admin)
@@ -134,6 +136,9 @@ export const courseAPI = {
   // Get available batches for a specific lab course
   getAvailableBatchesForCourse: (courseId: number, divisionId: number, academicYearId: number) =>
     api.get(`/admin/api/courses/${courseId}/available-batches?divisionId=${divisionId}&academicYearId=${academicYearId}`),
+  // Check if short name is available for a specific department and year
+  checkShortName: (shortName: string, departmentId: number, year: number, excludeId?: number) =>
+    api.get(`/admin/api/courses/check-short-name?shortName=${shortName}&departmentId=${departmentId}&year=${year}${excludeId ? `&excludeId=${excludeId}` : ''}`),
 };
 
 // Room API (Admin)
@@ -189,6 +194,8 @@ export const batchAPI = {
   update: (id: number, batchData: any) => api.put(`/admin/api/batches/${id}`, batchData),
   delete: (id: number) => api.delete(`/admin/api/batches/${id}`),
   getByDivision: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}`),
+  validateDivisionBatches: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}/validation`),
+  getSuggestedStrength: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}/suggested-strength`),
 };
 
 // Time Slot API (Public - for teachers)

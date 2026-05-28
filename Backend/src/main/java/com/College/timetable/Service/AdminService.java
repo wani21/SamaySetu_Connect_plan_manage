@@ -75,6 +75,23 @@ public class AdminService {
         existing.setMinWeeklyHours(request.getMinWeeklyHours());
         existing.setMaxWeeklyHours(request.getMaxWeeklyHours());
         
+        // Update short name if provided
+        if (request.getShortName() != null && !request.getShortName().trim().isEmpty()) {
+            String shortName = request.getShortName().trim().toUpperCase();
+            
+            // Validate format
+            if (!shortName.matches("^[A-Z]{2,5}$")) {
+                throw new IllegalArgumentException("Short name must be 2-5 uppercase letters only");
+            }
+            
+            // Check uniqueness (exclude current teacher)
+            if (isShortNameTaken(shortName, id)) {
+                throw new IllegalArgumentException("Short name '" + shortName + "' is already taken");
+            }
+            
+            existing.setShortName(shortName);
+        }
+        
         if (request.getIsActive() != null) {
             existing.setIsActive(request.getIsActive());
         }
@@ -89,5 +106,17 @@ public class AdminService {
         }
         
         return teacherRepository.save(existing);
+    }
+    
+    /**
+     * Check if short name is already taken by another teacher
+     * @param shortName The short name to check
+     * @param excludeId Teacher ID to exclude from check (for updates)
+     * @return true if taken, false if available
+     */
+    public boolean isShortNameTaken(String shortName, Long excludeId) {
+        return teacherRepository.findByShortName(shortName)
+            .map(teacher -> excludeId == null || !teacher.getId().equals(excludeId))
+            .orElse(false);
     }
 }

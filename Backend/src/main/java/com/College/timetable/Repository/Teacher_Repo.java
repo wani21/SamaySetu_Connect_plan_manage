@@ -22,4 +22,9 @@ public interface Teacher_Repo extends JpaRepository<TeacherEntity, Long> {
     java.util.List<TeacherEntity> findByIsApprovedAndIsEmailVerified(Boolean isApproved, Boolean isEmailVerified);
 
     long countByDepartmentId(Long departmentId);
+    
+    // Short name uniqueness check
+    boolean existsByShortName(String shortName);
+    
+    Optional<TeacherEntity> findByShortName(String shortName);
 }

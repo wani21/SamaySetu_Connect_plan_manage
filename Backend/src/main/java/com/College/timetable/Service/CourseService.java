@@ -42,6 +42,7 @@ public class CourseService {
 			DepartmentEntity depart = department.findById(c.getDepartment().getId())
 				.orElseThrow(() -> new EntityNotFoundException("Department not found"));
 		}
+		
 		return course.save(c);
 	}
 
@@ -61,7 +62,19 @@ public class CourseService {
 		CourseEntity existing = getById(id);
 		existing.setName(c.getName());
 		existing.setCode(c.getCode());
+		
+		// Update short name
+		if (c.getShortName() != null) {
+			existing.setShortName(c.getShortName());
+		}
+		
 		existing.setCourseType(c.getCourseType());
+		
+		// Update course category
+		if (c.getCourseCategory() != null) {
+			existing.setCourseCategory(c.getCourseCategory());
+		}
+		
 		existing.setCredits(c.getCredits());
 		existing.setHoursPerWeek(c.getHoursPerWeek());
 		existing.setSemester(c.getSemester());
@@ -131,11 +144,12 @@ public class CourseService {
 		for (CourseEntity courseEntity : allCourses) {
 			if (courseEntity.getCourseType() == com.College.timetable.Entity.CourseType.LAB) {
 				// LAB LOGIC: Count unique batches that have this lab course FOR THIS SEMESTER
+				// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 				long batchesWithThisLab = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
-					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.filter(e -> e.getBatch() != null)
 					.map(e -> e.getBatch().getId())
@@ -161,14 +175,15 @@ public class CourseService {
 				}
 			} else {
 				// THEORY LOGIC: Division-level progressive allocation FOR THIS SEMESTER
+				// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 				int maxInstances = courseEntity.getHoursPerWeek();
 				
-				// Count existing DRAFT entries for this course in this division FOR THIS SEMESTER
+				// Count existing DRAFT and PUBLISHED entries for this course in this division FOR THIS SEMESTER
 				long existingCount = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
-					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.count();
 				
@@ -224,11 +239,12 @@ public class CourseService {
 		List<com.College.timetable.Entity.Batch> allBatches = batchRepo.findByDivisionId(divisionId);
 		
 		// Get batches that already have this lab course allocated FOR THIS SEMESTER
+		// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 		java.util.Set<Long> allocatedBatchIds = timetableEntryRepo.findAll().stream()
 			.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 			.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 			.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseId))
-			.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+			.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 			.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 			.filter(e -> e.getBatch() != null)
 			.map(e -> e.getBatch().getId())
@@ -243,6 +259,70 @@ public class CourseService {
 				batchMap.put("name", batch.getName());
 				result.add(batchMap);
 			}
+		}
+		
+		return result;
+	}
+	
+	/**
+	 * Check if a short name is already taken for a specific department and year.
+	 * Returns availability status and suggestions if taken.
+	 * 
+	 * @param shortName The short name to check (case-insensitive)
+	 * @param departmentId The department ID
+	 * @param year The academic year (1-4)
+	 * @param excludeCourseId Optional course ID to exclude from check (for updates)
+	 * @return Map with availability status and suggestions
+	 */
+	@Transactional(readOnly = true)
+	public java.util.Map<String, Object> checkShortNameAvailability(
+		String shortName,
+		Long departmentId,
+		Integer year,
+		Long excludeCourseId
+	) {
+		java.util.Map<String, Object> result = new java.util.HashMap<>();
+		
+		// Check if exists (case-insensitive comparison)
+		boolean exists = course.existsByShortNameAndDepartmentAndYear(shortName, departmentId, year);
+		
+		// If exists, check if it's the same course being updated
+		if (exists && excludeCourseId != null) {
+			java.util.Optional<CourseEntity> existing = course.findByShortNameAndDepartmentAndYear(
+				shortName, departmentId, year
+			);
+			if (existing.isPresent() && existing.get().getId().equals(excludeCourseId)) {
+				exists = false; // It's the same course, so it's available
+			}
+		}
+		
+		result.put("available", !exists);
+		
+		if (exists) {
+			result.put("message", "Short name '" + shortName + "' is already taken in this department and year");
+			
+			// Generate suggestions with alphabetic suffixes
+			List<String> suggestions = new java.util.ArrayList<>();
+			String baseShortName = shortName;
+			
+			// Try adding A, B, C, etc.
+			for (char suffix = 'A'; suffix <= 'Z'; suffix++) {
+				String suggestion = baseShortName + suffix;
+				if (suggestion.length() <= 15) { // Respect max length
+					boolean suggestionExists = course.existsByShortNameAndDepartmentAndYear(
+						suggestion, departmentId, year
+					);
+					if (!suggestionExists) {
+						suggestions.add(suggestion);
+						if (suggestions.size() >= 3) break; // Limit to 3 suggestions
+					}
+				}
+			}
+			
+			result.put("suggestions", suggestions);
+		} else {
+			result.put("message", "Short name is available");
+			result.put("suggestions", new java.util.ArrayList<>());
 		}
 		
 		return result;

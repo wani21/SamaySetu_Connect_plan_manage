@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiBook } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiBook, FiCheck, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -18,14 +18,19 @@ export const CoursesPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
+    shortName: '',
     courseType: 'theory',
     credits: '',
     hoursPerWeek: '',
     departmentId: '',
     semester: '1',
+    year: '1',
     description: '',
   });
   const [errors, setErrors] = useState<any>({});
+  const [shortNameAvailable, setShortNameAvailable] = useState<boolean | null>(null);
+  const [shortNameSuggestions, setShortNameSuggestions] = useState<string[]>([]);
+  const [checkingShortName, setCheckingShortName] = useState(false);
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,6 +63,63 @@ export const CoursesPage: React.FC = () => {
     }
   };
 
+  // Short name validation with debounce
+  const checkShortNameAvailability = async (shortName: string) => {
+    if (!shortName || shortName.length < 2 || !formData.departmentId || !formData.year) {
+      setShortNameAvailable(null);
+      setShortNameSuggestions([]);
+      return;
+    }
+
+    // Validate format (2-15 alphanumeric with spaces and hyphens, case-insensitive)
+    if (!/^[A-Za-z0-9 -]{2,15}$/.test(shortName)) {
+      setShortNameAvailable(false);
+      setErrors((prev: any) => ({ ...prev, shortName: 'Must be 2-15 letters, numbers, spaces, and hyphens only' }));
+      setShortNameSuggestions([]);
+      return;
+    }
+
+    setCheckingShortName(true);
+    try {
+      const response = await courseAPI.checkShortName(
+        shortName,
+        parseInt(formData.departmentId),
+        parseInt(formData.year),
+        editingCourse?.id
+      );
+      
+      const data = response.data;
+      setShortNameAvailable(data.available);
+      
+      if (!data.available) {
+        setErrors((prev: any) => ({ ...prev, shortName: data.message }));
+        setShortNameSuggestions(data.suggestions || []);
+      } else {
+        setErrors((prev: any) => {
+          const newErrors = { ...prev };
+          delete newErrors.shortName;
+          return newErrors;
+        });
+        setShortNameSuggestions([]);
+      }
+    } catch (error) {
+      console.error('Error checking short name:', error);
+    } finally {
+      setCheckingShortName(false);
+    }
+  };
+
+  // Debounced short name check
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.shortName && formData.departmentId && formData.year) {
+        checkShortNameAvailability(formData.shortName);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formData.shortName, formData.departmentId, formData.year]);
+
   const handleEdit = (course: any) => {
     setEditingCourse(course);
     setIsEditMode(true);
@@ -65,13 +127,17 @@ export const CoursesPage: React.FC = () => {
     setFormData({
       name: course.name,
       code: course.code,
+      shortName: course.shortName || '',
       courseType: course.courseType.toLowerCase(),
       credits: course.credits.toString(),
       hoursPerWeek: course.hoursPerWeek.toString(),
       departmentId: course.department.id.toString(),
       semester: semesterNum,
+      year: course.year?.toString() || '1',
       description: course.description || '',
     });
+    setShortNameAvailable(true); // Existing short name is valid
+    setShortNameSuggestions([]);
     setShowModal(true);
   };
 
@@ -79,16 +145,20 @@ export const CoursesPage: React.FC = () => {
     setFormData({
       name: '',
       code: '',
+      shortName: '',
       courseType: 'theory',
       credits: '',
       hoursPerWeek: '',
       departmentId: '',
       semester: '1',
+      year: '1',
       description: '',
     });
     setEditingCourse(null);
     setIsEditMode(false);
     setErrors({});
+    setShortNameAvailable(null);
+    setShortNameSuggestions([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,9 +167,13 @@ export const CoursesPage: React.FC = () => {
     const newErrors: any = {};
     if (!formData.name) newErrors.name = 'Name is required';
     if (!formData.code) newErrors.code = 'Code is required';
+    if (!formData.shortName) newErrors.shortName = 'Short name is required';
+    else if (!/^[A-Za-z0-9 -]{2,15}$/.test(formData.shortName)) newErrors.shortName = 'Must be 2-15 letters, numbers, spaces, and hyphens only';
+    else if (shortNameAvailable === false) newErrors.shortName = 'Short name is already taken';
     if (!formData.credits) newErrors.credits = 'Credits is required';
     if (!formData.hoursPerWeek) newErrors.hoursPerWeek = 'Hours per week is required';
     if (!formData.departmentId) newErrors.departmentId = 'Department is required';
+    if (!formData.year) newErrors.year = 'Year is required';
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -111,10 +185,12 @@ export const CoursesPage: React.FC = () => {
       const courseData = {
         name: formData.name,
         code: formData.code,
+        shortName: formData.shortName,
         courseType: formData.courseType.toUpperCase(),
         credits: parseInt(formData.credits),
         hoursPerWeek: parseInt(formData.hoursPerWeek),
         semester: `SEM_${formData.semester}`,
+        year: parseInt(formData.year),
         description: formData.description || null,
         department: {
           id: parseInt(formData.departmentId)
@@ -161,7 +237,8 @@ export const CoursesPage: React.FC = () => {
   const filteredCourses = courses.filter((course) => {
     const matchesSearch = searchQuery === '' || 
       course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      course.code.toLowerCase().includes(searchQuery.toLowerCase());
+      course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (course.shortName && course.shortName.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesDepartment = filterDepartment === '' || 
       course.department.id.toString() === filterDepartment;
@@ -200,7 +277,7 @@ export const CoursesPage: React.FC = () => {
               label="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or code..."
+              placeholder="Search by name, short name, or code..."
             />
           </div>
           <div>
@@ -288,7 +365,9 @@ export const CoursesPage: React.FC = () => {
                   <FiBook size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">{course.name}</h3>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {course.name} {course.shortName && <span className="text-primary-600">({course.shortName})</span>}
+                  </h3>
                   <p className="text-sm text-gray-600">{course.code}</p>
                 </div>
               </div>
@@ -373,7 +452,58 @@ export const CoursesPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Input
+              label="Short Name"
+              value={formData.shortName}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^A-Za-z0-9 -]/g, '');
+                if (value.length <= 15) {
+                  setFormData({ ...formData, shortName: value });
+                }
+              }}
+              error={errors.shortName}
+              placeholder="SE-Lab"
+              maxLength={15}
+            />
+            {checkingShortName && (
+              <p className="mt-1 text-sm text-gray-500">Checking availability...</p>
+            )}
+            {shortNameAvailable === true && formData.shortName && (
+              <p className="mt-1 text-sm text-green-600 flex items-center gap-1">
+                <FiCheck size={14} /> Available
+              </p>
+            )}
+            {shortNameAvailable === false && formData.shortName && (
+              <div className="mt-1">
+                <p className="text-sm text-red-600 flex items-center gap-1">
+                  <FiX size={14} /> {errors.shortName}
+                </p>
+                {shortNameSuggestions.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-600 mb-1">Suggestions:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {shortNameSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, shortName: suggestion });
+                          }}
+                          className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="mt-1 text-xs text-gray-500">2-15 letters, numbers, spaces, and hyphens (A-Z, a-z, 0-9, space, -)</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Course Type
@@ -409,6 +539,29 @@ export const CoursesPage: React.FC = () => {
               </select>
               {errors.departmentId && (
                 <p className="mt-1 text-sm text-red-600">{errors.departmentId}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Year
+              </label>
+              <select
+                value={formData.year}
+                onChange={(e) => {
+                  setFormData({ ...formData, year: e.target.value });
+                  setErrors({ ...errors, year: '' });
+                }}
+                className={`input-field ${errors.year ? 'input-error' : ''}`}
+              >
+                <option value="">Select Year</option>
+                <option value="1">First Year (FY)</option>
+                <option value="2">Second Year (SY)</option>
+                <option value="3">Third Year (TY)</option>
+                <option value="4">Fourth Year (B.Tech)</option>
+              </select>
+              {errors.year && (
+                <p className="mt-1 text-sm text-red-600">{errors.year}</p>
               )}
             </div>
           </div>

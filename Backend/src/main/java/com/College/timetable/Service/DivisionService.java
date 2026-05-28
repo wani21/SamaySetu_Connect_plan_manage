@@ -27,6 +27,9 @@ public class DivisionService {
 	@Autowired
 	private Dep_repo dep;
 	
+	@Autowired
+	private BatchValidationService batchValidationService;
+	
 	@Transactional
 	public Division addDivision(Division division) {
 		// Validate academic year exists
@@ -63,6 +66,12 @@ public class DivisionService {
 	@Transactional
 	public Division update(Long id, Division division) {
 		Division existing = getById(id);
+		
+		// Track if total students changed
+		Integer oldTotalStudents = existing.getTotalStudents();
+		Integer newTotalStudents = division.getTotalStudents();
+		boolean strengthChanged = !java.util.Objects.equals(oldTotalStudents, newTotalStudents);
+		
 		existing.setName(division.getName());
 		existing.setYear(division.getYear());
 		existing.setBranch(division.getBranch());
@@ -86,7 +95,19 @@ public class DivisionService {
 			existing.setDepartment(d);
 		}
 
-		return div.save(existing);
+		Division saved = div.save(existing);
+		
+		// Auto-adjust last batch strength if division strength changed
+		if (strengthChanged) {
+			try {
+				batchValidationService.autoAdjustLastBatchStrength(id);
+			} catch (Exception e) {
+				// Log but don't fail the division update
+				System.err.println("Failed to auto-adjust batch strength: " + e.getMessage());
+			}
+		}
+		
+		return saved;
 	}
 
 	@Transactional
