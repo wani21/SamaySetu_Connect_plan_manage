@@ -65,6 +65,64 @@ public class AdminController {
     @Value("${app.staff.default-password:random}")
     private String staffDefaultPassword;
     
+    /**
+     * Check if short name is available (unique)
+     */
+    @GetMapping("/api/teachers/check-short-name")
+    public ResponseEntity<java.util.Map<String, Object>> checkShortNameAvailability(
+            @RequestParam String shortName,
+            @RequestParam(required = false) Long excludeId) {
+        try {
+            // Validate format
+            if (!shortName.matches("^[A-Z]{2,5}$")) {
+                return ResponseEntity.ok(java.util.Map.of(
+                    "available", false,
+                    "message", "Short name must be 2-5 uppercase letters only"
+                ));
+            }
+            
+            // Check uniqueness
+            boolean exists = adminService.isShortNameTaken(shortName, excludeId);
+            
+            if (exists) {
+                // Suggest alternatives
+                List<String> suggestions = generateShortNameSuggestions(shortName);
+                return ResponseEntity.ok(java.util.Map.of(
+                    "available", false,
+                    "message", "Short name '" + shortName + "' is already taken",
+                    "suggestions", suggestions
+                ));
+            }
+            
+            return ResponseEntity.ok(java.util.Map.of(
+                "available", true,
+                "message", "Short name is available"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                "available", false,
+                "message", "Error checking short name: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * Generate short name suggestions by appending A, B, C, etc.
+     */
+    private List<String> generateShortNameSuggestions(String baseName) {
+        List<String> suggestions = new ArrayList<>();
+        String[] suffixes = {"A", "B", "C", "D", "E"};
+        
+        for (String suffix : suffixes) {
+            String suggestion = baseName + suffix;
+            if (suggestion.length() <= 5 && !adminService.isShortNameTaken(suggestion, null)) {
+                suggestions.add(suggestion);
+            }
+        }
+        
+        return suggestions;
+    }
+    
     @PostMapping("/upload-staff")
     public ResponseEntity<String> uploadStaffCSV(@RequestParam("file") MultipartFile file) {
         try {
@@ -116,6 +174,7 @@ public class AdminController {
             TeacherEntity teacher = new TeacherEntity();
             teacher.setName(request.getName());
             teacher.setEmployeeId(request.getEmployeeId());
+            teacher.setShortName(request.getShortName().trim().toUpperCase());
             teacher.setEmail(request.getEmail());
             teacher.setPhone(request.getPhone());
             teacher.setSpecialization(request.getSpecialization());
@@ -170,11 +229,11 @@ public class AdminController {
     
     @GetMapping("/download-staff-template")
     public ResponseEntity<String> downloadStaffTemplate() {
-        String csvContent = "Name,Employee ID,Email,Phone,Specialization,Min Weekly Hours,Max Weekly Hours,Role\n" +
-                           "John Doe,EMP001,john.doe@mitaoe.ac.in,9876543210,Computer Science,12,25,TEACHER\n" +
-                           "Jane Smith,EMP002,jane.smith@mitaoe.ac.in,9876543211,Mathematics,10,20,HOD\n" +
-                           "Robert Johnson,EMP003,robert.johnson@mitaoe.ac.in,9876543212,Physics,15,30,TEACHER\n" +
-                           "Emily Davis,EMP004,emily.davis@mitaoe.ac.in,9876543213,Chemistry,10,25,TIMETABLE_COORDINATOR";
+        String csvContent = "Name,Employee ID,Short Name,Email,Phone,Specialization,Min Weekly Hours,Max Weekly Hours,Role\n" +
+                           "John Doe,EMP001,JD,john.doe@mitaoe.ac.in,9876543210,Computer Science,12,25,TEACHER\n" +
+                           "Jane Smith,EMP002,JS,jane.smith@mitaoe.ac.in,9876543211,Mathematics,10,20,HOD\n" +
+                           "Robert Johnson,EMP003,RJ,robert.johnson@mitaoe.ac.in,9876543212,Physics,15,30,TEACHER\n" +
+                           "Emily Davis,EMP004,ED,emily.davis@mitaoe.ac.in,9876543213,Chemistry,10,25,TIMETABLE_COORDINATOR";
         
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("text/csv"));
@@ -359,30 +418,31 @@ public class AdminController {
 
                 // Quote-aware CSV parsing: handles "field with, comma" correctly
                 String[] fields = parseCSVLine(line);
-                if (fields.length < 7) {
-                    throw new RuntimeException("Row " + lineNumber + ": Expected at least 7 columns, found " + fields.length);
+                if (fields.length < 8) {
+                    throw new RuntimeException("Row " + lineNumber + ": Expected at least 8 columns, found " + fields.length);
                 }
 
                 TeacherEntity teacher = new TeacherEntity();
                 teacher.setName(fields[0].trim());
                 teacher.setEmployeeId(fields[1].trim());
-                teacher.setEmail(fields[2].trim());
-                teacher.setPhone(fields[3].trim());
-                teacher.setSpecialization(fields[4].trim());
+                teacher.setShortName(fields[2].trim().toUpperCase());
+                teacher.setEmail(fields[3].trim());
+                teacher.setPhone(fields[4].trim());
+                teacher.setSpecialization(fields[5].trim());
 
                 try {
-                    teacher.setMinWeeklyHours(Integer.parseInt(fields[5].trim()));
-                    teacher.setMaxWeeklyHours(Integer.parseInt(fields[6].trim()));
+                    teacher.setMinWeeklyHours(Integer.parseInt(fields[6].trim()));
+                    teacher.setMaxWeeklyHours(Integer.parseInt(fields[7].trim()));
                 } catch (NumberFormatException e) {
                     throw new RuntimeException("Row " + lineNumber + ": Weekly hours must be numeric");
                 }
 
-                // Role from column 8 (optional — defaults to TEACHER)
+                // Role from column 9 (optional — defaults to TEACHER)
                 String role = "TEACHER";
-                if (fields.length >= 8 && !fields[7].trim().isEmpty()) {
-                    role = fields[7].trim().toUpperCase();
+                if (fields.length >= 9 && !fields[8].trim().isEmpty()) {
+                    role = fields[8].trim().toUpperCase();
                     if (!List.of("TEACHER", "HOD", "TIMETABLE_COORDINATOR").contains(role)) {
-                        throw new RuntimeException("Row " + lineNumber + ": Invalid role '" + fields[7].trim() + "'. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR");
+                        throw new RuntimeException("Row " + lineNumber + ": Invalid role '" + fields[8].trim() + "'. Allowed: TEACHER, HOD, TIMETABLE_COORDINATOR");
                     }
                 }
 

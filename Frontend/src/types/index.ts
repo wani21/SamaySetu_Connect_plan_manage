@@ -88,6 +88,7 @@ export interface TimeSlot {
 export interface Teacher {
   id: number;
   name: string;
+  shortName: string;
   email: string;
   phone?: string;
   department?: string;

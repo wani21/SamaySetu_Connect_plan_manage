@@ -295,8 +295,9 @@ public class TimetableExportService {
     // ═══════════════════════════════════════════════════════════════
 
     /**
-     * Generate professor initials from full name
-     * Example: "Abhijeet Purushottam Rane" -> "APR"
+     * Generate professor initials from full name or use short name if available
+     * Example: "Abhijeet Purushottam Rane" -> "APR" (auto-generated)
+     * Or use teacher.getShortName() if available (e.g., "APR" from database)
      */
     private String getProfessorInitials(String fullName) {
         if (fullName == null || fullName.trim().isEmpty()) {
@@ -313,6 +314,22 @@ public class TimetableExportService {
         }
         
         return initials.toString().toUpperCase();
+    }
+    
+    /**
+     * Get professor short name (preferred) or generate initials from full name
+     */
+    private String getProfessorShortName(TeacherEntity teacher) {
+        if (teacher == null) {
+            return "-";
+        }
+        
+        // Use short name if available, otherwise generate initials
+        if (teacher.getShortName() != null && !teacher.getShortName().trim().isEmpty()) {
+            return teacher.getShortName();
+        }
+        
+        return getProfessorInitials(teacher.getName());
     }
 
     /**
@@ -542,7 +559,7 @@ public class TimetableExportService {
                     
                     if (entry != null) {
                         String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "";
-                        String profInitials = getProfessorInitials(professor.getName());
+                        String profInitials = getProfessorShortName(professor);
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
                         
@@ -816,7 +833,7 @@ public class TimetableExportService {
                     
                     if (entry != null) {
                         String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "";
-                        String profInitials = getProfessorInitials(professor.getName());
+                        String profInitials = getProfessorShortName(professor);
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
                         
@@ -978,7 +995,7 @@ public class TimetableExportService {
                 
                 if (entry != null) {
                     String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                    String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String divisionName = "";
                     String yearLabel = "";
                     if (entry.getDivision() != null) {
@@ -1152,7 +1169,7 @@ public class TimetableExportService {
                 
                 if (entry != null) {
                     String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                    String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String divisionName = "";
                     String yearLabel = "";
                     if (entry.getDivision() != null) {
@@ -1322,7 +1339,7 @@ public class TimetableExportService {
 
                 if (entry != null) {
                     String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                    String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
 
@@ -1560,7 +1577,7 @@ public class TimetableExportService {
 
                 if (entry != null) {
                     String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                    String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
 
@@ -1793,7 +1810,7 @@ public class TimetableExportService {
 
                     if (entry != null) {
                         String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                        String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                        String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
 
@@ -2002,7 +2019,7 @@ public class TimetableExportService {
 
                     if (entry != null) {
                         String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
-                        String profInitials = entry.getTeacher() != null ? getProfessorInitials(entry.getTeacher().getName()) : "-";
+                        String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
 
@@ -2072,3 +2089,4 @@ public class TimetableExportService {
         return out.toByteArray();
     }
 }
+

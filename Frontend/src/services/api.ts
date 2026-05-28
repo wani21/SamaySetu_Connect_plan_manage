@@ -118,6 +118,8 @@ export const teacherAdminAPI = {
   getPendingApprovals: () => api.get('/api/teachers/pending-approvals'),
   approve: (id: number) => api.post(`/api/teachers/${id}/approve`),
   reject: (id: number, rejectionReason?: string) => api.post(`/api/teachers/${id}/reject`, rejectionReason),
+  checkShortName: (shortName: string, excludeId?: number) => 
+    api.get('/admin/api/teachers/check-short-name', { params: { shortName, excludeId } }),
 };
 
 // Course API (Admin)

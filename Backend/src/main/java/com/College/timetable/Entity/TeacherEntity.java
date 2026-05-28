@@ -56,6 +56,12 @@ public class TeacherEntity implements UserDetails{
 	@Column(name = "employee_id", unique = true, nullable = false)
 	private String employeeId;
 	
+	@NotBlank(message = "Short name is required")
+	@Size(min = 2, max = 5, message = "Short name must be 2-5 characters")
+	@jakarta.validation.constraints.Pattern(regexp = "^[A-Z]{2,5}$", message = "Short name must contain only uppercase letters (A-Z)")
+	@Column(name = "short_name", unique = true, nullable = false, length = 5)
+	private String shortName;
+	
 	@Email(message = "Invalid email format")
 	@Column(unique = true)
 	private String email;

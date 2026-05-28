@@ -37,7 +37,6 @@ export const AcademicStructurePage: React.FC = () => {
   const [courses, setCourses] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
-  const [batchValidation, setBatchValidation] = useState<any>(null);
   const [suggestedStrength, setSuggestedStrength] = useState<number>(0);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -115,22 +114,7 @@ export const AcademicStructurePage: React.FC = () => {
     try {
       const response = await batchAPI.getAll();
       setBatches(Array.isArray(response.data) ? response.data : []);
-      
-      // Fetch validation if we have a selected division
-      if (selectedDivision?.id) {
-        fetchBatchValidation();
-      }
     } catch (error) { toast.error('Failed to fetch batches'); }
-  };
-
-  const fetchBatchValidation = async () => {
-    if (!selectedDivision?.id) return;
-    try {
-      const response = await batchAPI.validateDivisionBatches(selectedDivision.id);
-      setBatchValidation(response.data);
-    } catch (error) {
-      console.error('Failed to fetch batch validation');
-    }
   };
 
   const fetchStaffList = async () => {

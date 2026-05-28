@@ -19,6 +19,11 @@ public class ManualStaffRequest {
     @NotBlank(message = "Employee ID is required")
     private String employeeId;
     
+    @NotBlank(message = "Short name is required")
+    @jakarta.validation.constraints.Size(min = 2, max = 5, message = "Short name must be 2-5 characters")
+    @jakarta.validation.constraints.Pattern(regexp = "^[A-Z]{2,5}$", message = "Short name must contain only uppercase letters (A-Z)")
+    private String shortName;
+    
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
     private String email;

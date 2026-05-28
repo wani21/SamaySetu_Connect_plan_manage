@@ -22,6 +22,11 @@ public class AdminStaffUpdateRequest {
     @Size(max = 20)
     private String employeeId;
     
+    @NotBlank(message = "Short name is required")
+    @Size(min = 2, max = 5, message = "Short name must be 2-5 characters")
+    @jakarta.validation.constraints.Pattern(regexp = "^[A-Z]{2,5}$", message = "Short name must contain only uppercase letters (A-Z)")
+    private String shortName;
+    
     @Email(message = "Invalid email format")
     private String email;
     
