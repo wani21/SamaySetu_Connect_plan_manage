@@ -138,11 +138,12 @@ public class CourseService {
 		for (CourseEntity courseEntity : allCourses) {
 			if (courseEntity.getCourseType() == com.College.timetable.Entity.CourseType.LAB) {
 				// LAB LOGIC: Count unique batches that have this lab course FOR THIS SEMESTER
+				// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 				long batchesWithThisLab = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
-					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.filter(e -> e.getBatch() != null)
 					.map(e -> e.getBatch().getId())
@@ -168,14 +169,15 @@ public class CourseService {
 				}
 			} else {
 				// THEORY LOGIC: Division-level progressive allocation FOR THIS SEMESTER
+				// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 				int maxInstances = courseEntity.getHoursPerWeek();
 				
-				// Count existing DRAFT entries for this course in this division FOR THIS SEMESTER
+				// Count existing DRAFT and PUBLISHED entries for this course in this division FOR THIS SEMESTER
 				long existingCount = timetableEntryRepo.findAll().stream()
 					.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 					.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 					.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseEntity.getId()))
-					.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+					.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 					.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 					.count();
 				
@@ -231,11 +233,12 @@ public class CourseService {
 		List<com.College.timetable.Entity.Batch> allBatches = batchRepo.findByDivisionId(divisionId);
 		
 		// Get batches that already have this lab course allocated FOR THIS SEMESTER
+		// Count BOTH DRAFT and PUBLISHED entries to prevent over-allocation
 		java.util.Set<Long> allocatedBatchIds = timetableEntryRepo.findAll().stream()
 			.filter(e -> e.getDivision() != null && e.getDivision().getId().equals(divisionId))
 			.filter(e -> e.getAcademicYear() != null && e.getAcademicYear().getId().equals(academicYearId))
 			.filter(e -> e.getCourse() != null && e.getCourse().getId().equals(courseId))
-			.filter(e -> e.getStatus() == TimetableStatus.DRAFT)
+			.filter(e -> e.getStatus() == TimetableStatus.DRAFT || e.getStatus() == TimetableStatus.PUBLISHED)
 			.filter(e -> semester == null || e.getSemester() == semester) // Filter by semester
 			.filter(e -> e.getBatch() != null)
 			.map(e -> e.getBatch().getId())

@@ -766,16 +766,8 @@ public class TimetableService {
             .filter(r -> !bookedRoomIds.contains(r.getId()))
             // 2. Room capacity matches
             .filter(r -> r.getCapacity() == null || r.getCapacity() >= reqCap)
-            // 3. Room type compatibility
-            .filter(r -> {
-                if (course == null) return true; // if no course is selected yet, show all
-                String roomType = r.getRoomType() != null ? r.getRoomType().name() : "CLASSROOM";
-                if (isLabCourse) {
-                    return "LAB".equalsIgnoreCase(roomType);
-                } else {
-                    return !"LAB".equalsIgnoreCase(roomType);
-                }
-            })
+            // 3. Room type compatibility - REMOVED: Allow all room types for all courses
+            // Users can schedule labs in classrooms and theory in labs if needed
             .toList();
     }
 
