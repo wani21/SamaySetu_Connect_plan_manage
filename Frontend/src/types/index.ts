@@ -37,11 +37,14 @@ export interface Department {
   hodName?: string;
 }
 
+export type CourseCategory = 'CORE' | 'NORMAL_ELECTIVE' | 'GLOBAL_ELECTIVE';
+
 export interface Course {
   id: number;
   name: string;
   code?: string;
   shortName: string;
+  courseCategory?: CourseCategory;
   credits?: number;
   semester?: number;
   departmentId?: number;

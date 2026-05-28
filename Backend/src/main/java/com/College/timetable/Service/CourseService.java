@@ -69,6 +69,12 @@ public class CourseService {
 		}
 		
 		existing.setCourseType(c.getCourseType());
+		
+		// Update course category
+		if (c.getCourseCategory() != null) {
+			existing.setCourseCategory(c.getCourseCategory());
+		}
+		
 		existing.setCredits(c.getCredits());
 		existing.setHoursPerWeek(c.getHoursPerWeek());
 		existing.setSemester(c.getSemester());

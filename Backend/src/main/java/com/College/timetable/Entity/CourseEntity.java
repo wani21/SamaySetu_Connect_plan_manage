@@ -63,6 +63,11 @@ public class CourseEntity {
 	@Column(name = "course_type", nullable = false)
 	private CourseType courseType;
 	
+	@NotNull(message = "Course category is required")
+	@Enumerated(EnumType.STRING)
+	@Column(name = "course_category", nullable = false)
+	private CourseCategory courseCategory;
+	
 	@Min(value = 1, message = "Credits must be at least 1")
 	@Column(nullable = false)
 	private Integer credits;

@@ -234,7 +234,7 @@ export const AcademicStructurePage: React.FC = () => {
       case 'academic-year': return { yearName: '', startDate: '', endDate: '', isCurrent: false };
       case 'department': return { name: '', code: '', headOfDepartment: '', years: [1, 2, 3, 4] };
       case 'division': return { name: '', branch: selectedDepartment?.name || '', totalStudents: '', timeSlotType: 'TYPE_1', classTeacher: '', classRepresentative: '' };
-      case 'course': return { name: '', code: '', shortName: '', courseType: 'THEORY', credits: '', hoursPerWeek: '' };
+      case 'course': return { name: '', code: '', shortName: '', courseType: 'THEORY', courseCategory: 'CORE', credits: '', hoursPerWeek: '' };
       case 'batch': return { name: '', strength: '' };
       default: return {};
     }
@@ -247,7 +247,7 @@ export const AcademicStructurePage: React.FC = () => {
         const yearsArray = item.years ? item.years.split(',').map((y: string) => parseInt(y.trim())) : [1, 2, 3, 4];
         return { name: item.name, code: item.code, headOfDepartment: item.headOfDepartment || '', years: yearsArray };
       case 'division': return { name: item.name, branch: item.branch || selectedDepartment?.name || '', totalStudents: item.totalStudents?.toString(), timeSlotType: item.timeSlotType || 'TYPE_1', classTeacher: item.classTeacher || '', classRepresentative: item.classRepresentative || '' };
-      case 'course': return { name: item.name, code: item.code, shortName: item.shortName || '', courseType: item.courseType, credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
+      case 'course': return { name: item.name, code: item.code, shortName: item.shortName || '', courseType: item.courseType, courseCategory: item.courseCategory || 'CORE', credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
       case 'batch': return { name: item.name, strength: item.strength?.toString() || '' };
       default: return {};
     }
@@ -945,9 +945,19 @@ export const AcademicStructurePage: React.FC = () => {
                   <option value="TUTORIAL">Tutorial</option>
                 </select>
               </div>
-              <Input label="Credits" type="number" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} placeholder="3" min="1" required />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Course Category</label>
+                <select value={formData.courseCategory} onChange={(e) => setFormData({ ...formData, courseCategory: e.target.value })} className="input-field">
+                  <option value="CORE">Core</option>
+                  <option value="NORMAL_ELECTIVE">Normal Elective</option>
+                  <option value="GLOBAL_ELECTIVE">Global Elective</option>
+                </select>
+              </div>
             </div>
-            <Input label="Hours/Week" type="number" value={formData.hoursPerWeek} onChange={(e) => setFormData({ ...formData, hoursPerWeek: e.target.value })} placeholder="4" min="1" required />
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Credits" type="number" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} placeholder="3" min="1" required />
+              <Input label="Hours/Week" type="number" value={formData.hoursPerWeek} onChange={(e) => setFormData({ ...formData, hoursPerWeek: e.target.value })} placeholder="4" min="1" required />
+            </div>
             <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-600">
               This course will be added to <strong>Semester {(selectedYear! - 1) * 2 + (selectedSemester === 'ODD' ? 1 : 2)}</strong> of {selectedDepartment?.name}
             </div>
