@@ -123,4 +123,29 @@ public class CourseController {
 		);
 		return ResponseEntity.ok(available);
 	}
+	
+	/**
+	 * GET /admin/api/courses/check-short-name?shortName=DS&departmentId=1&year=3&excludeId=5
+	 * Check if a course short name is available for a specific department and year.
+	 * Returns availability status and suggestions if taken.
+	 * 
+	 * @param shortName The short name to check (case-insensitive)
+	 * @param departmentId The department ID
+	 * @param year The academic year (1-4)
+	 * @param excludeId Optional course ID to exclude from check (for updates)
+	 * @return Map with availability, message, and suggestions
+	 */
+	@GetMapping("/check-short-name")
+	public ResponseEntity<java.util.Map<String, Object>> checkShortName(
+		@RequestParam String shortName,
+		@RequestParam Long departmentId,
+		@RequestParam Integer year,
+		@RequestParam(required = false) Long excludeId
+	) {
+		authService.checkDepartmentAccess(departmentId);
+		java.util.Map<String, Object> result = courseService.checkShortNameAvailability(
+			shortName, departmentId, year, excludeId
+		);
+		return ResponseEntity.ok(result);
+	}
 }

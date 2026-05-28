@@ -234,7 +234,7 @@ export const AcademicStructurePage: React.FC = () => {
       case 'academic-year': return { yearName: '', startDate: '', endDate: '', isCurrent: false };
       case 'department': return { name: '', code: '', headOfDepartment: '', years: [1, 2, 3, 4] };
       case 'division': return { name: '', branch: selectedDepartment?.name || '', totalStudents: '', timeSlotType: 'TYPE_1', classTeacher: '', classRepresentative: '' };
-      case 'course': return { name: '', code: '', courseType: 'THEORY', credits: '', hoursPerWeek: '' };
+      case 'course': return { name: '', code: '', shortName: '', courseType: 'THEORY', credits: '', hoursPerWeek: '' };
       case 'batch': return { name: '', strength: '' };
       default: return {};
     }
@@ -247,7 +247,7 @@ export const AcademicStructurePage: React.FC = () => {
         const yearsArray = item.years ? item.years.split(',').map((y: string) => parseInt(y.trim())) : [1, 2, 3, 4];
         return { name: item.name, code: item.code, headOfDepartment: item.headOfDepartment || '', years: yearsArray };
       case 'division': return { name: item.name, branch: item.branch || selectedDepartment?.name || '', totalStudents: item.totalStudents?.toString(), timeSlotType: item.timeSlotType || 'TYPE_1', classTeacher: item.classTeacher || '', classRepresentative: item.classRepresentative || '' };
-      case 'course': return { name: item.name, code: item.code, courseType: item.courseType, credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
+      case 'course': return { name: item.name, code: item.code, shortName: item.shortName || '', courseType: item.courseType, credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
       case 'batch': return { name: item.name, strength: item.strength?.toString() || '' };
       default: return {};
     }
@@ -922,6 +922,21 @@ export const AcademicStructurePage: React.FC = () => {
             <Input label="Course Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Data Structures" required />
             <div className="grid grid-cols-2 gap-4">
               <Input label="Course Code" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="CS201" required />
+              <Input 
+                label="Short Name" 
+                value={formData.shortName} 
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^A-Za-z0-9 -]/g, '');
+                  if (value.length <= 15) {
+                    setFormData({ ...formData, shortName: value });
+                  }
+                }} 
+                placeholder="DS" 
+                maxLength={15}
+                required 
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Course Type</label>
                 <select value={formData.courseType} onChange={(e) => setFormData({ ...formData, courseType: e.target.value })} className="input-field">
@@ -930,11 +945,9 @@ export const AcademicStructurePage: React.FC = () => {
                   <option value="TUTORIAL">Tutorial</option>
                 </select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <Input label="Credits" type="number" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} placeholder="3" min="1" required />
-              <Input label="Hours/Week" type="number" value={formData.hoursPerWeek} onChange={(e) => setFormData({ ...formData, hoursPerWeek: e.target.value })} placeholder="4" min="1" required />
             </div>
+            <Input label="Hours/Week" type="number" value={formData.hoursPerWeek} onChange={(e) => setFormData({ ...formData, hoursPerWeek: e.target.value })} placeholder="4" min="1" required />
             <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-600">
               This course will be added to <strong>Semester {(selectedYear! - 1) * 2 + (selectedSemester === 'ODD' ? 1 : 2)}</strong> of {selectedDepartment?.name}
             </div>

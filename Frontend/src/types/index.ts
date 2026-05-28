@@ -41,6 +41,7 @@ export interface Course {
   id: number;
   name: string;
   code?: string;
+  shortName: string;
   credits?: number;
   semester?: number;
   departmentId?: number;

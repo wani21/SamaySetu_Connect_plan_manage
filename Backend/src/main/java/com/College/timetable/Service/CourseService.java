@@ -42,6 +42,7 @@ public class CourseService {
 			DepartmentEntity depart = department.findById(c.getDepartment().getId())
 				.orElseThrow(() -> new EntityNotFoundException("Department not found"));
 		}
+		
 		return course.save(c);
 	}
 
@@ -61,6 +62,12 @@ public class CourseService {
 		CourseEntity existing = getById(id);
 		existing.setName(c.getName());
 		existing.setCode(c.getCode());
+		
+		// Update short name
+		if (c.getShortName() != null) {
+			existing.setShortName(c.getShortName());
+		}
+		
 		existing.setCourseType(c.getCourseType());
 		existing.setCredits(c.getCredits());
 		existing.setHoursPerWeek(c.getHoursPerWeek());
@@ -243,6 +250,70 @@ public class CourseService {
 				batchMap.put("name", batch.getName());
 				result.add(batchMap);
 			}
+		}
+		
+		return result;
+	}
+	
+	/**
+	 * Check if a short name is already taken for a specific department and year.
+	 * Returns availability status and suggestions if taken.
+	 * 
+	 * @param shortName The short name to check (case-insensitive)
+	 * @param departmentId The department ID
+	 * @param year The academic year (1-4)
+	 * @param excludeCourseId Optional course ID to exclude from check (for updates)
+	 * @return Map with availability status and suggestions
+	 */
+	@Transactional(readOnly = true)
+	public java.util.Map<String, Object> checkShortNameAvailability(
+		String shortName,
+		Long departmentId,
+		Integer year,
+		Long excludeCourseId
+	) {
+		java.util.Map<String, Object> result = new java.util.HashMap<>();
+		
+		// Check if exists (case-insensitive comparison)
+		boolean exists = course.existsByShortNameAndDepartmentAndYear(shortName, departmentId, year);
+		
+		// If exists, check if it's the same course being updated
+		if (exists && excludeCourseId != null) {
+			java.util.Optional<CourseEntity> existing = course.findByShortNameAndDepartmentAndYear(
+				shortName, departmentId, year
+			);
+			if (existing.isPresent() && existing.get().getId().equals(excludeCourseId)) {
+				exists = false; // It's the same course, so it's available
+			}
+		}
+		
+		result.put("available", !exists);
+		
+		if (exists) {
+			result.put("message", "Short name '" + shortName + "' is already taken in this department and year");
+			
+			// Generate suggestions with alphabetic suffixes
+			List<String> suggestions = new java.util.ArrayList<>();
+			String baseShortName = shortName;
+			
+			// Try adding A, B, C, etc.
+			for (char suffix = 'A'; suffix <= 'Z'; suffix++) {
+				String suggestion = baseShortName + suffix;
+				if (suggestion.length() <= 15) { // Respect max length
+					boolean suggestionExists = course.existsByShortNameAndDepartmentAndYear(
+						suggestion, departmentId, year
+					);
+					if (!suggestionExists) {
+						suggestions.add(suggestion);
+						if (suggestions.size() >= 3) break; // Limit to 3 suggestions
+					}
+				}
+			}
+			
+			result.put("suggestions", suggestions);
+		} else {
+			result.put("message", "Short name is available");
+			result.put("suggestions", new java.util.ArrayList<>());
 		}
 		
 		return result;

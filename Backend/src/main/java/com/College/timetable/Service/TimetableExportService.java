@@ -331,6 +331,22 @@ public class TimetableExportService {
         
         return getProfessorInitials(teacher.getName());
     }
+    
+    /**
+     * Get course short name (preferred) or use full course name as fallback
+     */
+    private String getCourseShortName(CourseEntity course) {
+        if (course == null) {
+            return "-";
+        }
+        
+        // Use short name if available, otherwise use full name
+        if (course.getShortName() != null && !course.getShortName().trim().isEmpty()) {
+            return course.getShortName();
+        }
+        
+        return course.getName();
+    }
 
     /**
      * Get year label from year number
@@ -558,7 +574,7 @@ public class TimetableExportService {
                     entryCell.setMinimumHeight(30);
                     
                     if (entry != null) {
-                        String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "";
+                        String courseName = getCourseShortName(entry.getCourse());
                         String profInitials = getProfessorShortName(professor);
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
@@ -832,7 +848,7 @@ public class TimetableExportService {
                     TimetableEntry entry = lookup.get(key);
                     
                     if (entry != null) {
-                        String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "";
+                        String courseName = getCourseShortName(entry.getCourse());
                         String profInitials = getProfessorShortName(professor);
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
@@ -994,7 +1010,7 @@ public class TimetableExportService {
                 cell.setMinimumHeight(35);
                 
                 if (entry != null) {
-                    String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                    String courseName = getCourseShortName(entry.getCourse());
                     String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String divisionName = "";
                     String yearLabel = "";
@@ -1168,7 +1184,7 @@ public class TimetableExportService {
                 org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
                 
                 if (entry != null) {
-                    String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                    String courseName = getCourseShortName(entry.getCourse());
                     String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String divisionName = "";
                     String yearLabel = "";
@@ -1338,7 +1354,7 @@ public class TimetableExportService {
                 cell.setMinimumHeight(35);
 
                 if (entry != null) {
-                    String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                    String courseName = getCourseShortName(entry.getCourse());
                     String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
@@ -1576,7 +1592,7 @@ public class TimetableExportService {
                 org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
 
                 if (entry != null) {
-                    String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                    String courseName = getCourseShortName(entry.getCourse());
                     String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                     String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
@@ -1809,7 +1825,7 @@ public class TimetableExportService {
                     cell.setMinimumHeight(35);
 
                     if (entry != null) {
-                        String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                        String courseName = getCourseShortName(entry.getCourse());
                         String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
@@ -2018,7 +2034,7 @@ public class TimetableExportService {
                     org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
 
                     if (entry != null) {
-                        String courseName = entry.getCourse() != null ? entry.getCourse().getName() : "-";
+                        String courseName = getCourseShortName(entry.getCourse());
                         String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
                         String roomLocation = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
                         boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
