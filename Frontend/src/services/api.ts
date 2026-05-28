@@ -189,6 +189,8 @@ export const batchAPI = {
   update: (id: number, batchData: any) => api.put(`/admin/api/batches/${id}`, batchData),
   delete: (id: number) => api.delete(`/admin/api/batches/${id}`),
   getByDivision: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}`),
+  validateDivisionBatches: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}/validation`),
+  getSuggestedStrength: (divisionId: number) => api.get(`/admin/api/batches/division/${divisionId}/suggested-strength`),
 };
 
 // Time Slot API (Public - for teachers)

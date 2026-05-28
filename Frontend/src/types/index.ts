@@ -63,7 +63,9 @@ export interface Division {
 export interface Batch {
   id: number;
   name: string;
+  strength: number;
   divisionId?: number;
+  division?: Division;
 }
 
 export interface Room {

@@ -37,7 +37,9 @@ public class Batch {
     @Column(nullable = false)
     private String name;
 
-    @Column(name = "strength")
+    @jakarta.validation.constraints.NotNull(message = "Batch strength is required")
+    @jakarta.validation.constraints.Min(value = 0, message = "Batch strength must be non-negative")
+    @Column(name = "strength", nullable = false)
     private Integer strength;
 
     @ManyToOne(fetch = FetchType.EAGER)

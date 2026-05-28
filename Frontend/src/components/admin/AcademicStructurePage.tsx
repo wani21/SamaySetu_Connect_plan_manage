@@ -37,6 +37,8 @@ export const AcademicStructurePage: React.FC = () => {
   const [courses, setCourses] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
+  const [batchValidation, setBatchValidation] = useState<any>(null);
+  const [suggestedStrength, setSuggestedStrength] = useState<number>(0);
   
   const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -113,7 +115,22 @@ export const AcademicStructurePage: React.FC = () => {
     try {
       const response = await batchAPI.getAll();
       setBatches(Array.isArray(response.data) ? response.data : []);
+      
+      // Fetch validation if we have a selected division
+      if (selectedDivision?.id) {
+        fetchBatchValidation();
+      }
     } catch (error) { toast.error('Failed to fetch batches'); }
+  };
+
+  const fetchBatchValidation = async () => {
+    if (!selectedDivision?.id) return;
+    try {
+      const response = await batchAPI.validateDivisionBatches(selectedDivision.id);
+      setBatchValidation(response.data);
+    } catch (error) {
+      console.error('Failed to fetch batch validation');
+    }
   };
 
   const fetchStaffList = async () => {
@@ -200,6 +217,23 @@ export const AcademicStructurePage: React.FC = () => {
     setShowModal(true);
     setShowHodSuggestions(false);
     setShowTeacherSuggestions(false);
+    
+    // Fetch suggested strength for new batch
+    if (type === 'batch' && selectedDivision?.id) {
+      fetchSuggestedStrength();
+    }
+  };
+
+  const fetchSuggestedStrength = async () => {
+    if (!selectedDivision?.id) return;
+    try {
+      const response = await batchAPI.getSuggestedStrength(selectedDivision.id);
+      setSuggestedStrength(response.data.suggestedStrength || 0);
+      // Auto-fill the suggested strength
+      setFormData((prev: any) => ({ ...prev, strength: response.data.suggestedStrength?.toString() || '' }));
+    } catch (error) {
+      console.error('Failed to fetch suggested strength');
+    }
   };
 
   const openEditModal = (type: string, item: any) => {
@@ -217,7 +251,7 @@ export const AcademicStructurePage: React.FC = () => {
       case 'department': return { name: '', code: '', headOfDepartment: '', years: [1, 2, 3, 4] };
       case 'division': return { name: '', branch: selectedDepartment?.name || '', totalStudents: '', timeSlotType: 'TYPE_1', classTeacher: '', classRepresentative: '' };
       case 'course': return { name: '', code: '', courseType: 'THEORY', credits: '', hoursPerWeek: '' };
-      case 'batch': return { name: '' };
+      case 'batch': return { name: '', strength: '' };
       default: return {};
     }
   };
@@ -230,7 +264,7 @@ export const AcademicStructurePage: React.FC = () => {
         return { name: item.name, code: item.code, headOfDepartment: item.headOfDepartment || '', years: yearsArray };
       case 'division': return { name: item.name, branch: item.branch || selectedDepartment?.name || '', totalStudents: item.totalStudents?.toString(), timeSlotType: item.timeSlotType || 'TYPE_1', classTeacher: item.classTeacher || '', classRepresentative: item.classRepresentative || '' };
       case 'course': return { name: item.name, code: item.code, courseType: item.courseType, credits: item.credits?.toString(), hoursPerWeek: item.hoursPerWeek?.toString() };
-      case 'batch': return { name: item.name };
+      case 'batch': return { name: item.name, strength: item.strength?.toString() || '' };
       default: return {};
     }
   };
@@ -282,7 +316,11 @@ export const AcademicStructurePage: React.FC = () => {
           fetchCourses();
           break;
         case 'batch':
-          const batchData = { ...formData, division: { id: selectedDivision.id } };
+          const batchData = { 
+            ...formData, 
+            strength: parseInt(formData.strength) || 0,
+            division: { id: selectedDivision.id } 
+          };
           if (editingItem) { await batchAPI.update(editingItem.id, batchData); toast.success('Batch updated!'); }
           else { await batchAPI.create(batchData); toast.success('Batch created!'); }
           fetchBatches();
@@ -683,25 +721,91 @@ export const AcademicStructurePage: React.FC = () => {
 
   const renderBatches = () => {
     const filteredBatches = getFilteredBatches();
+    
+    // Calculate validation status
+    const divisionStrength = selectedDivision?.totalStudents || 0;
+    const totalBatchStrength = filteredBatches.reduce((sum, b) => sum + (b.strength || 0), 0);
+    const unallocated = divisionStrength - totalBatchStrength;
+    const status = unallocated === 0 ? 'PERFECT' : unallocated > 0 ? 'UNDER_ALLOCATED' : 'OVER_ALLOCATED';
+    
     return (
       <>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-4">
           <p className="text-gray-600">{selectedDepartment?.name} • {yearLabels[selectedYear!].short} • Division {selectedDivision?.name}</p>
           <Button variant="primary" onClick={() => openAddModal('batch')} className="flex items-center gap-2"><FiPlus /> Add Batch</Button>
         </div>
+        
+        {/* Validation Summary */}
+        <div className={`mb-6 p-4 rounded-lg border-2 ${
+          status === 'PERFECT' ? 'bg-green-50 border-green-200' : 
+          status === 'UNDER_ALLOCATED' ? 'bg-yellow-50 border-yellow-200' : 
+          'bg-red-50 border-red-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div>
+                <span className="text-sm text-gray-600">Division Strength:</span>
+                <span className="ml-2 font-bold text-gray-900">{divisionStrength}</span>
+              </div>
+              <div>
+                <span className="text-sm text-gray-600">Batch Total:</span>
+                <span className="ml-2 font-bold text-gray-900">{totalBatchStrength}</span>
+              </div>
+              <div>
+                <span className="text-sm text-gray-600">
+                  {unallocated >= 0 ? 'Unallocated:' : 'Over-allocated:'}
+                </span>
+                <span className={`ml-2 font-bold ${
+                  status === 'PERFECT' ? 'text-green-600' : 
+                  status === 'UNDER_ALLOCATED' ? 'text-yellow-600' : 
+                  'text-red-600'
+                }`}>
+                  {Math.abs(unallocated)}
+                </span>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+              status === 'PERFECT' ? 'bg-green-100 text-green-700' : 
+              status === 'UNDER_ALLOCATED' ? 'bg-yellow-100 text-yellow-700' : 
+              'bg-red-100 text-red-700'
+            }`}>
+              {status === 'PERFECT' ? '✓ Perfect Match' : 
+               status === 'UNDER_ALLOCATED' ? '⚠ Under-allocated' : 
+               '✗ Over-allocated'}
+            </div>
+          </div>
+        </div>
+        
         {filteredBatches.length === 0 ? (
           <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">No batches yet. Create your first batch.</div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredBatches.map((batch) => (
-              <div key={batch.id} className="flex items-center justify-between p-3 bg-white border rounded-lg">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded flex items-center justify-center"><FiGrid size={16} /></div>
-                  <span className="font-medium">{batch.name}</span>
+              <div key={batch.id} className="p-4 bg-white border rounded-lg hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center">
+                      <FiGrid size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900">{batch.name}</h4>
+                      <p className="text-sm text-gray-500">Batch #{batch.id}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEditModal('batch', batch)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit">
+                      <FiEdit2 size={14} />
+                    </button>
+                    <button onClick={() => handleDelete('batch', batch.id, batch.name)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Delete">
+                      <FiTrash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => openEditModal('batch', batch)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><FiEdit2 size={12} /></button>
-                  <button onClick={() => handleDelete('batch', batch.id, batch.name)} className="p-1 text-red-600 hover:bg-red-50 rounded"><FiTrash2 size={12} /></button>
+                <div className="pt-3 border-t border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Strength:</span>
+                    <span className="text-lg font-bold text-primary-700">{batch.strength || 0} students</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -857,9 +961,52 @@ export const AcademicStructurePage: React.FC = () => {
           </form>
         );
       case 'batch':
+        const divisionStrength = selectedDivision?.totalStudents || 0;
+        const existingBatches = getFilteredBatches().filter(b => !editingItem || b.id !== editingItem.id);
+        const allocatedStrength = existingBatches.reduce((sum, b) => sum + (b.strength || 0), 0);
+        const remainingStrength = divisionStrength - allocatedStrength;
+        
         return (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Batch Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })} placeholder="B1" required />
+            <Input 
+              label="Batch Name" 
+              value={formData.name} 
+              onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })} 
+              placeholder="B1" 
+              required 
+            />
+            <div>
+              <Input 
+                label="Batch Strength" 
+                type="number" 
+                min="0"
+                value={formData.strength} 
+                onChange={(e) => setFormData({ ...formData, strength: e.target.value })} 
+                placeholder="Enter number of students" 
+                required 
+              />
+              {!editingItem && suggestedStrength > 0 && (
+                <p className="mt-1 text-sm text-gray-500">
+                  Suggested: {suggestedStrength} students (based on remaining unallocated students)
+                </p>
+              )}
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg text-sm">
+                <div className="flex justify-between mb-1">
+                  <span className="text-gray-600">Division Total:</span>
+                  <span className="font-semibold">{divisionStrength}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-gray-600">Already Allocated:</span>
+                  <span className="font-semibold">{allocatedStrength}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-gray-200">
+                  <span className="text-gray-700 font-medium">Remaining:</span>
+                  <span className={`font-bold ${remainingStrength >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {remainingStrength}
+                  </span>
+                </div>
+              </div>
+            </div>
             <div className="flex gap-3 pt-4">
               <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">Cancel</Button>
               <Button type="submit" variant="primary" isLoading={isLoading} className="flex-1">{editingItem ? 'Update' : 'Create'}</Button>

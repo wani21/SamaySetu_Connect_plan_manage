@@ -19,9 +19,11 @@ import com.College.timetable.Entity.Division;
 import com.College.timetable.Repository.Batch_repo;
 import com.College.timetable.Repository.Division_repo;
 import com.College.timetable.Service.DepartmentAuthorizationService;
+import com.College.timetable.Service.BatchValidationService;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/api/batches")
@@ -36,6 +38,9 @@ public class BatchController {
 
     @Autowired
     private DepartmentAuthorizationService authService;
+
+    @Autowired
+    private BatchValidationService batchValidationService;
 
     @GetMapping
     public ResponseEntity<List<Batch>> getAll() {
@@ -64,6 +69,19 @@ public class BatchController {
         return ResponseEntity.ok(batchRepository.findByDivisionId(divisionId));
     }
 
+    @GetMapping("/division/{divisionId}/validation")
+    public ResponseEntity<Map<String, Object>> validateDivisionBatches(@PathVariable Long divisionId) {
+        authService.checkDivisionAccess(divisionId);
+        return ResponseEntity.ok(batchValidationService.validateBatchStrengths(divisionId));
+    }
+
+    @GetMapping("/division/{divisionId}/suggested-strength")
+    public ResponseEntity<Map<String, Integer>> getSuggestedStrength(@PathVariable Long divisionId) {
+        authService.checkDivisionAccess(divisionId);
+        int suggested = batchValidationService.calculateSuggestedStrength(divisionId);
+        return ResponseEntity.ok(Map.of("suggestedStrength", suggested));
+    }
+
     @PostMapping
     public ResponseEntity<Batch> create(@Valid @RequestBody Batch batch) {
         if (batch.getDivision() != null && batch.getDivision().getId() != null) {
@@ -72,6 +90,12 @@ public class BatchController {
                 .orElseThrow(() -> new EntityNotFoundException("Division not found"));
             batch.setDivision(division);
         }
+        
+        // Validate strength is provided
+        if (batch.getStrength() == null || batch.getStrength() < 0) {
+            throw new IllegalArgumentException("Batch strength is required and must be non-negative");
+        }
+        
         return ResponseEntity.ok(batchRepository.save(batch));
     }
 
@@ -82,6 +106,14 @@ public class BatchController {
             .orElseThrow(() -> new EntityNotFoundException("Batch not found"));
         
         existing.setName(batch.getName());
+        
+        // Update strength if provided
+        if (batch.getStrength() != null) {
+            if (batch.getStrength() < 0) {
+                throw new IllegalArgumentException("Batch strength must be non-negative");
+            }
+            existing.setStrength(batch.getStrength());
+        }
         
         if (batch.getDivision() != null && batch.getDivision().getId() != null) {
             authService.checkDivisionAccess(batch.getDivision().getId());
