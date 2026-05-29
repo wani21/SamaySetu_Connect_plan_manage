@@ -408,12 +408,11 @@ public class TimetableService {
     }
 
     /**
-     * Get published timetable for a teacher — CACHED
+     * Get timetable for a teacher (DRAFT + PUBLISHED) — CACHED
      */
     @Cacheable(value = "teacherTimetable", key = "#teacherId + '_' + #academicYearId")
     public List<TimetableEntry> getTeacherTimetable(Long teacherId, Long academicYearId) {
-        return timetableRepo
-            .findByTeacherIdAndAcademicYearIdAndStatus(teacherId, academicYearId, TimetableStatus.PUBLISHED);
+        return timetableRepo.findByProfessorAndAcademicYear(teacherId, academicYearId);
     }
 
     /**

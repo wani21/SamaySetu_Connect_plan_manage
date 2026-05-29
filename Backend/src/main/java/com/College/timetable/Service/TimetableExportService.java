@@ -8,6 +8,8 @@ import com.College.timetable.Repository.*;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
+import com.lowagie.text.Image;
+import com.lowagie.text.Chunk;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
@@ -900,328 +902,558 @@ public class TimetableExportService {
     }
 
     /**
-     * Generate PDF for room timetable (standard format)
+     * Generate PDF for room timetable (Official MITAOE Institutional Format)
      * Shows all classes scheduled in the room across all divisions
      */
     public byte[] generateRoomPDF(Long roomId, Long academicYearId, Semester semester) throws Exception {
-        // Fetch data
         ClassRoom room = roomRepo.findById(roomId)
             .orElseThrow(() -> new RuntimeException("Room not found"));
         AcademicYear academicYear = academicYearRepo.findById(academicYearId)
             .orElseThrow(() -> new RuntimeException("Academic year not found"));
-        List<TimetableEntry> entries = timetableEntryRepo.findPublishedByRoomAndSemester(
-            roomId, academicYearId, semester
-        );
-        
-        // Get time slots
-        List<TimeSlot> slots = timeSlotRepo.findAll().stream()
-            .filter(s -> Boolean.TRUE.equals(s.getIsActive()))
-            .filter(s -> "TYPE_1".equals(s.getType()))
-            .sorted(Comparator.comparing(TimeSlot::getStartTime))
-            .collect(Collectors.toList());
-        
-        // Build lookup map
-        Map<String, TimetableEntry> lookup = new HashMap<>();
-        for (TimetableEntry e : entries) {
-            if (e.getDayOfWeek() != null && e.getTimeSlot() != null) {
-                String key = e.getDayOfWeek().name() + ":" + e.getTimeSlot().getId();
-                lookup.put(key, e);
-            }
-        }
-        
-        // Create PDF
+        List<TimetableEntry> entries = timetableEntryRepo.findPublishedByRoomAndSemester(roomId, academicYearId, semester);
+        List<TimeSlot> allSlots = getSortedSlotsForEntries(entries);
+        Map<String, List<TimetableEntry>> multiLookup = buildMultiLookup(entries);
+
+        // Stats
+        long teachingSlotCount = allSlots.stream().filter(s -> !Boolean.TRUE.equals(s.getIsBreak())).count();
+        long totalCapacity = teachingSlotCount * 6;
+        long occupiedSlots = entries.stream()
+            .map(e -> e.getDayOfWeek().name() + ":" + e.getTimeSlot().getId()).distinct().count();
+        double utilization = totalCapacity > 0 ? Math.round((occupiedSlots * 1000.0) / totalCapacity) / 10.0 : 0;
+
+        Set<Semester> semesters = entries.stream().map(TimetableEntry::getSemester)
+            .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        String semesterDisplay = semesters.stream().map(this::toRomanNumeral).collect(Collectors.joining(", "));
+        if (semesterDisplay.isEmpty() && semester != null) semesterDisplay = toRomanNumeral(semester);
+        if (semesterDisplay.isEmpty()) semesterDisplay = "-";
+
+        String roomName = room.getName() != null ? room.getName().toUpperCase() : "UNKNOWN";
+        String roomNumber = room.getRoomNumber() != null ? room.getRoomNumber() : "-";
+        String bldgWing = room.getBuildingWing() != null ? room.getBuildingWing() : "-";
+        String roomType = room.getRoomType() != null ? room.getRoomType().name() : "CLASSROOM";
+        int cap = room.getCapacity() != null ? room.getCapacity() : 0;
+        String yearName = academicYear != null ? academicYear.getYearName() : "-";
+        String deptName = room.getDepartment() != null
+            ? "DEPARTMENT OF " + room.getDepartment().getName().toUpperCase()
+            : "DEPARTMENT OF COMPUTER ENGINEERING";
+
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4.rotate(), 20, 20, 30, 20);
+        Document doc = new Document(PageSize.A4.rotate(), 10, 10, 8, 8);
         PdfWriter.getInstance(doc, out);
         doc.open();
-        
+
         // Fonts
-        Font headerFont = new Font(Font.HELVETICA, 14, Font.BOLD, new Color(27, 42, 78));
-        Font subFont = new Font(Font.HELVETICA, 9, Font.NORMAL, Color.GRAY);
-        Font thFont = new Font(Font.HELVETICA, 8, Font.BOLD, Color.WHITE);
-        Font cellFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
-        Font cellBold = new Font(Font.HELVETICA, 7, Font.BOLD, new Color(27, 42, 78));
-        Font breakFont = new Font(Font.HELVETICA, 7, Font.ITALIC, Color.GRAY);
-        
-        // Header
-        doc.add(new Paragraph("MIT Academy of Engineering", new Font(Font.HELVETICA, 10, Font.BOLD, Color.DARK_GRAY)));
-        String title = String.format("Room Timetable — %s (%s) — %s — %s",
-            room.getName(), room.getRoomNumber(),
-            academicYear.getYearName(),
-            semester != null ? semester.name().replace("_", " ") : "");
-        doc.add(new Paragraph(title, headerFont));
-        doc.add(new Paragraph("Generated on " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")), subFont));
-        doc.add(new Paragraph(" "));
-        
-        // Table: 1 time column + 6 day columns
-        PdfPTable table = new PdfPTable(7);
-        table.setWidthPercentage(100);
-        table.setWidths(new float[]{12, 15, 15, 15, 15, 15, 13});
-        
-        // Header row
-        Color headerBg = new Color(27, 42, 78);
-        PdfPCell timeHeaderCell = new PdfPCell(new Phrase("Time", thFont));
-        timeHeaderCell.setBackgroundColor(headerBg);
-        timeHeaderCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-        timeHeaderCell.setPadding(4);
-        table.addCell(timeHeaderCell);
-        
-        for (String day : DAY_LABELS) {
-            PdfPCell dayHeaderCell = new PdfPCell(new Phrase(day, thFont));
-            dayHeaderCell.setBackgroundColor(headerBg);
-            dayHeaderCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            dayHeaderCell.setPadding(4);
-            table.addCell(dayHeaderCell);
+        Font titleFont = new Font(Font.HELVETICA, 11, Font.BOLD, Color.BLACK);
+        Font metaLabelFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font metaValueFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+        Font smallFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.DARK_GRAY);
+        Font deptFontS = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font roomNameFont = new Font(Font.HELVETICA, 9, Font.BOLD, Color.BLACK);
+        Color headerBgColor = new Color(214, 228, 240);
+        Font gridHeaderFont = new Font(Font.HELVETICA, 6, Font.BOLD, new Color(27, 42, 78));
+        Font dayFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font cellCourseFont = new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK);
+        Font cellDetailFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.BLACK);
+        Font breakVertFont = new Font(Font.HELVETICA, 6, Font.BOLD, Color.GRAY);
+        Font sigFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+        float bw = 0.5f;
+
+        // ── HEADER TABLE ──
+        PdfPTable ht = new PdfPTable(3);
+        ht.setWidthPercentage(100);
+        ht.setWidths(new float[]{40f, 30f, 30f});
+
+        // R1: Logo | Title | Room Label
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorderWidth(bw); logoCell.setPadding(3);
+        logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE); logoCell.setRowspan(2);
+        try {
+            Image logo = Image.getInstance(getClass().getResource("/static/mitaoe_logo.png"));
+            logo.scaleToFit(120, 28);
+            Paragraph lp = new Paragraph();
+            lp.add(new Chunk(logo, 0, 0, true));
+            lp.add(new Chunk("  Alandi (D), Pune - 412 105", smallFont));
+            logoCell.addElement(lp);
+        } catch (Exception e) {
+            logoCell.setPhrase(new Phrase("MIT Academy of Engineering, Alandi (D), Pune - 412 105", metaLabelFont));
         }
-        
-        // Data rows
-        for (TimeSlot slot : slots) {
+        ht.addCell(logoCell);
+
+        String ttl = "LAB".equals(roomType) ? "LABORATORY WISE TIME TABLE" : "ROOM WISE TIME TABLE";
+        PdfPCell tc = new PdfPCell(new Phrase(ttl, titleFont));
+        tc.setBorderWidth(bw); tc.setPadding(3);
+        tc.setHorizontalAlignment(Element.ALIGN_CENTER);
+        tc.setVerticalAlignment(Element.ALIGN_MIDDLE); tc.setRowspan(2);
+        ht.addCell(tc);
+
+        PdfPCell rl = new PdfPCell(new Phrase("ROOM / LAB NAME", metaLabelFont));
+        rl.setBorderWidth(bw); rl.setPadding(3);
+        rl.setHorizontalAlignment(Element.ALIGN_CENTER);
+        rl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        ht.addCell(rl);
+
+        // R2: ... | ... | Room Name Value
+        PdfPCell rv = new PdfPCell(new Phrase(roomName + " (" + roomNumber + ")", roomNameFont));
+        rv.setBorderWidth(bw); rv.setPadding(3);
+        rv.setHorizontalAlignment(Element.ALIGN_CENTER);
+        rv.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        ht.addCell(rv);
+
+        // R3: Dept | Academic Year | Room Details (rowspan 3)
+        PdfPCell dc = new PdfPCell(new Phrase(deptName, deptFontS));
+        dc.setBorderWidth(bw); dc.setPadding(3);
+        dc.setHorizontalAlignment(Element.ALIGN_CENTER);
+        dc.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        ht.addCell(dc);
+
+        PdfPCell ac = new PdfPCell();
+        ac.setBorderWidth(bw); ac.setPadding(3);
+        ac.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph ap = new Paragraph();
+        ap.add(new Chunk("ACADEMIC YEAR : ", metaLabelFont));
+        ap.add(new Chunk(yearName, metaValueFont));
+        ac.addElement(ap);
+        ht.addCell(ac);
+
+        PdfPCell dtl = new PdfPCell();
+        dtl.setBorderWidth(bw); dtl.setPadding(3);
+        dtl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        dtl.setRowspan(3); dtl.setHorizontalAlignment(Element.ALIGN_CENTER);
+        Paragraph dp = new Paragraph();
+        dp.setAlignment(Element.ALIGN_CENTER);
+        dp.add(new Chunk("ROOM DETAILS\n", metaLabelFont));
+        dp.add(new Chunk("Building : " + bldgWing + "\n", metaValueFont));
+        dp.add(new Chunk("Capacity : " + cap + "\n", metaValueFont));
+        dp.add(new Chunk("Type : " + roomType + "\n", metaValueFont));
+        dp.add(new Chunk("Utilization : " + utilization + "%", new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK)));
+        dtl.addElement(dp);
+        ht.addCell(dtl);
+
+        // R4: empty | Semester | (cont)
+        PdfPCell e4 = new PdfPCell(new Phrase("", metaValueFont));
+        e4.setBorderWidth(bw); e4.setPadding(3); ht.addCell(e4);
+        PdfPCell sc = new PdfPCell();
+        sc.setBorderWidth(bw); sc.setPadding(3); sc.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph sp = new Paragraph();
+        sp.add(new Chunk("SEMESTER : ", metaLabelFont));
+        sp.add(new Chunk(semesterDisplay, metaValueFont));
+        sc.addElement(sp);
+        ht.addCell(sc);
+
+        // R5: empty | WEF | (cont)
+        PdfPCell e5 = new PdfPCell(new Phrase("", metaValueFont));
+        e5.setBorderWidth(bw); e5.setPadding(3); ht.addCell(e5);
+        PdfPCell wc = new PdfPCell();
+        wc.setBorderWidth(bw); wc.setPadding(3); wc.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph wp = new Paragraph();
+        wp.add(new Chunk("W.E.F : ", metaLabelFont));
+        wp.add(new Chunk(LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")), metaValueFont));
+        wc.addElement(wp);
+        ht.addCell(wc);
+
+        doc.add(ht);
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 2)));
+
+        // ── TIMETABLE GRID ──
+        int totalCols = 1 + allSlots.size();
+        PdfPTable grid = new PdfPTable(totalCols);
+        grid.setWidthPercentage(100);
+        float[] cw = new float[totalCols];
+        cw[0] = 7f;
+        float sw = 93f / allSlots.size();
+        for (int i = 1; i < totalCols; i++)
+            cw[i] = Boolean.TRUE.equals(allSlots.get(i-1).getIsBreak()) ? sw * 0.5f : sw;
+        grid.setWidths(cw);
+
+        // Header Row 1
+        PdfPCell th = new PdfPCell(new Phrase("Time", gridHeaderFont));
+        th.setBackgroundColor(headerBgColor); th.setBorderWidth(0.5f);
+        th.setHorizontalAlignment(Element.ALIGN_CENTER);
+        th.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        th.setPadding(2); th.setRowspan(2);
+        grid.addCell(th);
+
+        for (int i = 0; i < allSlots.size(); i++) {
+            TimeSlot slot = allSlots.get(i);
             if (Boolean.TRUE.equals(slot.getIsBreak())) {
-                // Break row
-                PdfPCell timeCell = new PdfPCell(new Phrase(formatTime(slot) + "\n" + slot.getSlotName(), breakFont));
-                timeCell.setBackgroundColor(new Color(240, 240, 240));
-                timeCell.setPadding(4);
-                table.addCell(timeCell);
-                
-                PdfPCell breakCell = new PdfPCell(new Phrase(slot.getSlotName(), breakFont));
-                breakCell.setColspan(6);
-                breakCell.setBackgroundColor(new Color(240, 240, 240));
-                breakCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-                breakCell.setPadding(4);
-                table.addCell(breakCell);
-                continue;
-            }
-            
-            // Time cell
-            PdfPCell timeCell = new PdfPCell();
-            timeCell.addElement(new Phrase(formatTime(slot), cellBold));
-            timeCell.addElement(new Phrase(slot.getSlotName(), subFont));
-            timeCell.setBackgroundColor(new Color(248, 249, 250));
-            timeCell.setPadding(4);
-            table.addCell(timeCell);
-            
-            // Day cells
-            for (String day : DAY_NAMES) {
-                String key = day + ":" + slot.getId();
-                TimetableEntry entry = lookup.get(key);
-                
-                PdfPCell cell = new PdfPCell();
-                cell.setPadding(3);
-                cell.setMinimumHeight(35);
-                
-                if (entry != null) {
-                    String courseName = getCourseShortName(entry.getCourse());
-                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
-                    String divisionName = "";
-                    String yearLabel = "";
-                    if (entry.getDivision() != null) {
-                        String branch = entry.getDivision().getDepartment() != null ? entry.getDivision().getDepartment().getCode() : "";
-                        String year = String.valueOf(entry.getDivision().getYear());
-                        String div = entry.getDivision().getName();
-                        divisionName = String.format("%s %s %s", branch, year, div).trim();
-                        yearLabel = getYearLabel(entry.getDivision().getYear());
-                    }
-                    boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
-                    
-                    if (isLab && entry.getBatch() != null) {
-                        // Lab format: "FY B1 - Course Name - Division"
-                        String batchName = entry.getBatch().getName();
-                        String displayText = yearLabel + " " + batchName + " - " + courseName + " - " + divisionName;
-                        cell.addElement(new Phrase(displayText, cellFont));
-                    } else {
-                        // Theory format: "SY A - Course Name - Division"
-                        String divName = entry.getDivision() != null ? entry.getDivision().getName() : "";
-                        String displayText = yearLabel + " " + divName + " - " + courseName + " - " + divisionName;
-                        cell.addElement(new Phrase(displayText, cellFont));
-                    }
-                    cell.setBackgroundColor(isLab ? new Color(243, 232, 255) : new Color(232, 240, 254));
-                } else {
-                    cell.addElement(new Phrase("-", breakFont));
-                }
-                table.addCell(cell);
+                PdfPCell bh = new PdfPCell();
+                bh.setBackgroundColor(new Color(240,240,240)); bh.setBorderWidth(0.5f);
+                bh.setHorizontalAlignment(Element.ALIGN_CENTER);
+                bh.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                bh.setPadding(1); bh.setRowspan(2 + DAY_NAMES.length);
+                String bn = slot.getSlotName() != null ? slot.getSlotName() : "BREAK";
+                StringBuilder vt = new StringBuilder();
+                for (char c : bn.toCharArray()) vt.append(c).append("\n");
+                bh.setPhrase(new Phrase(vt.toString().trim(), breakVertFont));
+                grid.addCell(bh);
+            } else {
+                PdfPCell sh = new PdfPCell(new Phrase(formatTime(slot), gridHeaderFont));
+                sh.setBackgroundColor(headerBgColor); sh.setBorderWidth(0.5f);
+                sh.setHorizontalAlignment(Element.ALIGN_CENTER);
+                sh.setVerticalAlignment(Element.ALIGN_MIDDLE); sh.setPadding(2);
+                grid.addCell(sh);
             }
         }
-        
-        doc.add(table);
+
+        // Header Row 2: period numbers
+        int pn = 1;
+        for (int i = 0; i < allSlots.size(); i++) {
+            if (Boolean.TRUE.equals(allSlots.get(i).getIsBreak())) continue;
+            PdfPCell nc = new PdfPCell(new Phrase(String.valueOf(pn++), gridHeaderFont));
+            nc.setBackgroundColor(headerBgColor); nc.setBorderWidth(0.5f);
+            nc.setHorizontalAlignment(Element.ALIGN_CENTER);
+            nc.setVerticalAlignment(Element.ALIGN_MIDDLE); nc.setPadding(2);
+            grid.addCell(nc);
+        }
+
+        Set<String> mergedCells = new HashSet<>();
+
+        for (int d = 0; d < DAY_NAMES.length; d++) {
+            String day = DAY_NAMES[d];
+            PdfPCell dCell = new PdfPCell(new Phrase(DAY_LABELS[d].substring(0,3).toUpperCase(), dayFont));
+            dCell.setBorderWidth(0.5f); dCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            dCell.setVerticalAlignment(Element.ALIGN_MIDDLE); dCell.setPadding(3);
+            dCell.setMinimumHeight(45);
+            grid.addCell(dCell);
+
+            for (int si = 0; si < allSlots.size(); si++) {
+                TimeSlot slot = allSlots.get(si);
+                if (Boolean.TRUE.equals(slot.getIsBreak())) continue;
+                String ck = day + ":" + si;
+                if (mergedCells.contains(ck)) continue;
+
+                String key = day + ":" + slot.getId();
+                List<TimetableEntry> ce = multiLookup.getOrDefault(key, Collections.emptyList());
+                PdfPCell cell = new PdfPCell();
+                cell.setBorderWidth(0.5f); cell.setPadding(2); cell.setMinimumHeight(45);
+                cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+
+                if (!ce.isEmpty()) {
+                    TimetableEntry entry = ce.get(0);
+                    boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
+                    String cn = getCourseShortName(entry.getCourse());
+                    String ts = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
+                    String di = "";
+                    if (entry.getDivision() != null) {
+                        String yl = entry.getDivision().getYear() != null ? getYearLabel(entry.getDivision().getYear()) : "";
+                        String dn = entry.getDivision().getName() != null ? entry.getDivision().getName() : "";
+                        di = yl + " " + dn;
+                    }
+                    String batch = entry.getBatch() != null ? entry.getBatch().getName() : null;
+
+                    // Lab colspan merge
+                    if (isLab && si + 1 < allSlots.size()) {
+                        int nti = -1;
+                        for (int ni = si+1; ni < allSlots.size(); ni++) {
+                            if (!Boolean.TRUE.equals(allSlots.get(ni).getIsBreak())) { nti = ni; break; }
+                        }
+                        if (nti >= 0) {
+                            String nk = day + ":" + allSlots.get(nti).getId();
+                            List<TimetableEntry> ne = multiLookup.getOrDefault(nk, Collections.emptyList());
+                            if (!ne.isEmpty() && ne.get(0).getCourse() != null &&
+                                ne.get(0).getCourse().getCourseType() == CourseType.LAB &&
+                                entry.getCourse().getId().equals(ne.get(0).getCourse().getId())) {
+                                int cs = nti - si + 1;
+                                int bb = 0;
+                                for (int bi = si+1; bi < nti; bi++)
+                                    if (Boolean.TRUE.equals(allSlots.get(bi).getIsBreak())) bb++;
+                                cell.setColspan(cs - bb);
+                                mergedCells.add(day + ":" + nti);
+                            }
+                        }
+                    }
+
+                    Paragraph cp = new Paragraph();
+                    cp.setAlignment(Element.ALIGN_CENTER); cp.setLeading(8f);
+                    if (isLab && batch != null) {
+                        cp.add(new Chunk(batch + "-" + cn + " Lab", cellCourseFont));
+                        cp.add(new Chunk("\n" + di + " - " + ts, cellDetailFont));
+                    } else {
+                        cp.add(new Chunk(cn, cellCourseFont));
+                        cp.add(new Chunk("\n" + di, cellDetailFont));
+                        cp.add(new Chunk("\n" + ts, cellDetailFont));
+                    }
+                    if (ce.size() > 1) {
+                        for (int ei = 1; ei < ce.size(); ei++) {
+                            TimetableEntry ex = ce.get(ei);
+                            String eb = ex.getBatch() != null ? ex.getBatch().getName() : "";
+                            String et = ex.getTeacher() != null ? getProfessorShortName(ex.getTeacher()) : "";
+                            cp.add(new Chunk("\n" + eb + " - " + et, cellDetailFont));
+                        }
+                    }
+                    cell.addElement(cp);
+                    cell.setBackgroundColor(isLab ? new Color(248, 244, 255) : Color.WHITE);
+                }
+                grid.addCell(cell);
+            }
+        }
+        doc.add(grid);
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 4)));
+
+        // Signatures
+        PdfPTable st = new PdfPTable(2);
+        st.setWidthPercentage(100); st.setWidths(new float[]{50f, 50f});
+        PdfPCell sl = new PdfPCell(new Phrase("Time Table Coordinator", sigFont));
+        sl.setBorder(0); sl.setPaddingTop(12); sl.setHorizontalAlignment(Element.ALIGN_LEFT);
+        st.addCell(sl);
+        PdfPCell sr = new PdfPCell(new Phrase("HOD " + deptName.replace("DEPARTMENT OF ", ""), sigFont));
+        sr.setBorder(0); sr.setPaddingTop(12); sr.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        st.addCell(sr);
+        doc.add(st);
+
         doc.close();
         return out.toByteArray();
     }
 
     /**
-     * Generate Excel for room timetable (standard format)
-     * Shows all classes scheduled in the room across all divisions
+     * Generate Excel for room timetable (Official MITAOE Institutional Format)
+     * Inverted grid: Days = Rows, Slots = Columns
      */
     public byte[] generateRoomExcel(Long roomId, Long academicYearId, Semester semester) throws Exception {
-        // Fetch data
         ClassRoom room = roomRepo.findById(roomId)
             .orElseThrow(() -> new RuntimeException("Room not found"));
         AcademicYear academicYear = academicYearRepo.findById(academicYearId)
             .orElseThrow(() -> new RuntimeException("Academic year not found"));
-        List<TimetableEntry> entries = timetableEntryRepo.findPublishedByRoomAndSemester(
-            roomId, academicYearId, semester
-        );
-        
-        // Get time slots
-        List<TimeSlot> slots = timeSlotRepo.findAll().stream()
-            .filter(s -> Boolean.TRUE.equals(s.getIsActive()))
-            .filter(s -> "TYPE_1".equals(s.getType()))
-            .sorted(Comparator.comparing(TimeSlot::getStartTime))
-            .collect(Collectors.toList());
-        
-        // Build lookup map
-        Map<String, TimetableEntry> lookup = new HashMap<>();
-        for (TimetableEntry e : entries) {
-            if (e.getDayOfWeek() != null && e.getTimeSlot() != null) {
-                String key = e.getDayOfWeek().name() + ":" + e.getTimeSlot().getId();
-                lookup.put(key, e);
-            }
-        }
-        
-        // Create Excel workbook
+        List<TimetableEntry> entries = timetableEntryRepo.findPublishedByRoomAndSemester(roomId, academicYearId, semester);
+        List<TimeSlot> allSlots = getSortedSlotsForEntries(entries);
+        List<TimeSlot> teachingSlots = allSlots.stream()
+            .filter(s -> !Boolean.TRUE.equals(s.getIsBreak())).collect(Collectors.toList());
+        Map<String, List<TimetableEntry>> multiLookup = buildMultiLookup(entries);
+
+        // Stats
+        long totalCap = teachingSlots.size() * 6L;
+        long occ = entries.stream().map(e -> e.getDayOfWeek().name() + ":" + e.getTimeSlot().getId()).distinct().count();
+        double util = totalCap > 0 ? Math.round((occ * 1000.0) / totalCap) / 10.0 : 0;
+
+        Set<Semester> sems = entries.stream().map(TimetableEntry::getSemester)
+            .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        String semDisp = sems.stream().map(this::toRomanNumeral).collect(Collectors.joining(", "));
+        if (semDisp.isEmpty() && semester != null) semDisp = toRomanNumeral(semester);
+        if (semDisp.isEmpty()) semDisp = "-";
+
+        String roomName = room.getName() != null ? room.getName().toUpperCase() : "UNKNOWN";
+        String roomNumber = room.getRoomNumber() != null ? room.getRoomNumber() : "-";
+        String bldgWing = room.getBuildingWing() != null ? room.getBuildingWing() : "-";
+        String roomTypeStr = room.getRoomType() != null ? room.getRoomType().name() : "CLASSROOM";
+        int cap = room.getCapacity() != null ? room.getCapacity() : 0;
+        String yearName = academicYear != null ? academicYear.getYearName() : "-";
+        String deptName = room.getDepartment() != null
+            ? "DEPARTMENT OF " + room.getDepartment().getName().toUpperCase()
+            : "DEPARTMENT OF COMPUTER ENGINEERING";
+
         XSSFWorkbook wb = new XSSFWorkbook();
-        XSSFSheet sheet = wb.createSheet("Room Timetable");
-        
-        // Styles
-        XSSFCellStyle titleStyle = wb.createCellStyle();
-        XSSFFont titleFont = wb.createFont();
-        titleFont.setBold(true);
-        titleFont.setFontHeightInPoints((short) 14);
-        titleStyle.setFont(titleFont);
-        
-        XSSFCellStyle headerStyle = wb.createCellStyle();
-        XSSFFont headerFont = wb.createFont();
-        headerFont.setBold(true);
-        headerFont.setColor(IndexedColors.WHITE.getIndex());
-        headerFont.setFontHeightInPoints((short) 10);
-        headerStyle.setFont(headerFont);
-        headerStyle.setFillForegroundColor(new XSSFColor(new byte[]{27, 42, 78}, null));
-        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        headerStyle.setAlignment(HorizontalAlignment.CENTER);
-        headerStyle.setBorderBottom(BorderStyle.THIN);
-        
-        XSSFCellStyle cellStyle = wb.createCellStyle();
-        cellStyle.setWrapText(true);
-        cellStyle.setVerticalAlignment(VerticalAlignment.TOP);
-        cellStyle.setBorderBottom(BorderStyle.THIN);
-        cellStyle.setBorderRight(BorderStyle.THIN);
-        
-        XSSFCellStyle breakStyle = wb.createCellStyle();
-        breakStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 240, (byte) 240, (byte) 240}, null));
-        breakStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        breakStyle.setAlignment(HorizontalAlignment.CENTER);
-        XSSFFont breakFont = wb.createFont();
-        breakFont.setItalic(true);
-        breakFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
-        breakStyle.setFont(breakFont);
-        
-        XSSFCellStyle theoryStyle = wb.createCellStyle();
-        theoryStyle.cloneStyleFrom(cellStyle);
-        theoryStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 232, (byte) 240, (byte) 254}, null));
-        theoryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
-        XSSFCellStyle labStyle = wb.createCellStyle();
-        labStyle.cloneStyleFrom(cellStyle);
-        labStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 243, (byte) 232, (byte) 255}, null));
-        labStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
-        // Title rows
-        Row titleRow = sheet.createRow(0);
-        org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
-        titleCell.setCellValue("MIT Academy of Engineering");
-        titleCell.setCellStyle(titleStyle);
-        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6));
-        
-        Row subtitleRow = sheet.createRow(1);
-        String title = String.format("Room Timetable — %s (%s) — %s — %s",
-            room.getName(), room.getRoomNumber(),
-            academicYear.getYearName(),
-            semester != null ? semester.name().replace("_", " ") : "");
-        subtitleRow.createCell(0).setCellValue(title);
-        sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, 6));
-        
-        Row dateRow = sheet.createRow(2);
-        dateRow.createCell(0).setCellValue("Generated: " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")));
-        
-        // Header row
-        int rowIdx = 4;
-        Row headerRow = sheet.createRow(rowIdx++);
-        String[] headers = {"Time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-        for (int i = 0; i < headers.length; i++) {
-            org.apache.poi.ss.usermodel.Cell c = headerRow.createCell(i);
-            c.setCellValue(headers[i]);
-            c.setCellStyle(headerStyle);
+        XSSFSheet sheet = wb.createSheet("LAB".equals(roomTypeStr) ? "Lab Timetable" : "Room Timetable");
+        int gridCols = 1 + teachingSlots.size();
+
+        // ── Styles ──
+        XSSFCellStyle metaLblSt = wb.createCellStyle();
+        XSSFFont metaLblFt = wb.createFont();
+        metaLblFt.setBold(true); metaLblFt.setFontHeightInPoints((short) 9);
+        metaLblSt.setFont(metaLblFt);
+        metaLblSt.setBorderBottom(BorderStyle.THIN); metaLblSt.setBorderTop(BorderStyle.THIN);
+        metaLblSt.setBorderLeft(BorderStyle.THIN); metaLblSt.setBorderRight(BorderStyle.THIN);
+        metaLblSt.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        XSSFCellStyle metaValSt = wb.createCellStyle();
+        XSSFFont metaValFt = wb.createFont();
+        metaValFt.setFontHeightInPoints((short) 9);
+        metaValSt.setFont(metaValFt);
+        metaValSt.setBorderBottom(BorderStyle.THIN); metaValSt.setBorderTop(BorderStyle.THIN);
+        metaValSt.setBorderLeft(BorderStyle.THIN); metaValSt.setBorderRight(BorderStyle.THIN);
+        metaValSt.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        XSSFCellStyle titleSt = wb.createCellStyle();
+        XSSFFont titleFt = wb.createFont();
+        titleFt.setBold(true); titleFt.setFontHeightInPoints((short) 12);
+        titleSt.setFont(titleFt);
+        titleSt.setAlignment(HorizontalAlignment.CENTER); titleSt.setVerticalAlignment(VerticalAlignment.CENTER);
+        titleSt.setBorderBottom(BorderStyle.THIN); titleSt.setBorderTop(BorderStyle.THIN);
+        titleSt.setBorderLeft(BorderStyle.THIN); titleSt.setBorderRight(BorderStyle.THIN);
+
+        XSSFCellStyle roomNmSt = wb.createCellStyle();
+        XSSFFont roomNmFt = wb.createFont();
+        roomNmFt.setBold(true); roomNmFt.setFontHeightInPoints((short) 11);
+        roomNmSt.setFont(roomNmFt);
+        roomNmSt.setAlignment(HorizontalAlignment.CENTER); roomNmSt.setVerticalAlignment(VerticalAlignment.CENTER);
+        roomNmSt.setBorderBottom(BorderStyle.THIN); roomNmSt.setBorderTop(BorderStyle.THIN);
+        roomNmSt.setBorderLeft(BorderStyle.THIN); roomNmSt.setBorderRight(BorderStyle.THIN);
+
+        XSSFCellStyle hdrSt = wb.createCellStyle();
+        XSSFFont hdrFt = wb.createFont();
+        hdrFt.setBold(true); hdrFt.setFontHeightInPoints((short) 9);
+        hdrFt.setColor(new XSSFColor(new byte[]{27, 42, 78}, null));
+        hdrSt.setFont(hdrFt);
+        hdrSt.setFillForegroundColor(new XSSFColor(new byte[]{(byte)214,(byte)228,(byte)240}, null));
+        hdrSt.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        hdrSt.setAlignment(HorizontalAlignment.CENTER); hdrSt.setVerticalAlignment(VerticalAlignment.CENTER);
+        hdrSt.setBorderBottom(BorderStyle.THIN); hdrSt.setBorderTop(BorderStyle.THIN);
+        hdrSt.setBorderLeft(BorderStyle.THIN); hdrSt.setBorderRight(BorderStyle.THIN);
+
+        XSSFCellStyle daySt = wb.createCellStyle();
+        XSSFFont dayFt = wb.createFont();
+        dayFt.setBold(true); dayFt.setFontHeightInPoints((short) 10);
+        daySt.setFont(dayFt);
+        daySt.setAlignment(HorizontalAlignment.CENTER); daySt.setVerticalAlignment(VerticalAlignment.CENTER);
+        daySt.setBorderBottom(BorderStyle.THIN); daySt.setBorderTop(BorderStyle.THIN);
+        daySt.setBorderLeft(BorderStyle.THIN); daySt.setBorderRight(BorderStyle.THIN);
+
+        XSSFCellStyle thSt = wb.createCellStyle();
+        thSt.setWrapText(true); thSt.setVerticalAlignment(VerticalAlignment.CENTER);
+        thSt.setAlignment(HorizontalAlignment.CENTER);
+        thSt.setBorderBottom(BorderStyle.THIN); thSt.setBorderTop(BorderStyle.THIN);
+        thSt.setBorderLeft(BorderStyle.THIN); thSt.setBorderRight(BorderStyle.THIN);
+
+        XSSFCellStyle labSt = wb.createCellStyle();
+        labSt.cloneStyleFrom(thSt);
+        labSt.setFillForegroundColor(new XSSFColor(new byte[]{(byte)248,(byte)244,(byte)255}, null));
+        labSt.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        XSSFCellStyle emptSt = wb.createCellStyle();
+        emptSt.setBorderBottom(BorderStyle.THIN); emptSt.setBorderTop(BorderStyle.THIN);
+        emptSt.setBorderLeft(BorderStyle.THIN); emptSt.setBorderRight(BorderStyle.THIN);
+        emptSt.setVerticalAlignment(VerticalAlignment.CENTER); emptSt.setAlignment(HorizontalAlignment.CENTER);
+
+        int rowIdx = 0;
+
+        // ── Header Rows ──
+        // Row 0: Institution | Title | Room Label
+        Row r0 = sheet.createRow(rowIdx++); r0.setHeightInPoints(22);
+        int c1End = Math.max(2, gridCols/3 - 1);
+        int c2Start = c1End + 1; int c2End = c2Start + Math.max(2, gridCols/3 - 1);
+        int c3Start = c2End + 1; int c3End = gridCols - 1;
+
+        org.apache.poi.ss.usermodel.Cell h00 = r0.createCell(0);
+        h00.setCellValue("MIT Academy of Engineering, Alandi (D), Pune - 412 105");
+        h00.setCellStyle(metaLblSt);
+        if (c1End > 0) sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, c1End));
+
+        org.apache.poi.ss.usermodel.Cell h01 = r0.createCell(c2Start);
+        h01.setCellValue("LAB".equals(roomTypeStr) ? "LABORATORY WISE TIME TABLE" : "ROOM WISE TIME TABLE");
+        h01.setCellStyle(titleSt);
+        if (c2End > c2Start) sheet.addMergedRegion(new CellRangeAddress(0, 0, c2Start, c2End));
+
+        if (c3End >= c3Start) {
+            org.apache.poi.ss.usermodel.Cell h02 = r0.createCell(c3Start);
+            h02.setCellValue("ROOM / LAB NAME");
+            h02.setCellStyle(metaLblSt);
+            if (c3End > c3Start) sheet.addMergedRegion(new CellRangeAddress(0, 0, c3Start, c3End));
         }
-        
-        // Data rows
-        for (TimeSlot slot : slots) {
-            Row row = sheet.createRow(rowIdx++);
-            
-            if (Boolean.TRUE.equals(slot.getIsBreak())) {
-                org.apache.poi.ss.usermodel.Cell timeC = row.createCell(0);
-                timeC.setCellValue(formatTime(slot));
-                timeC.setCellStyle(breakStyle);
-                
-                org.apache.poi.ss.usermodel.Cell breakC = row.createCell(1);
-                breakC.setCellValue(slot.getSlotName());
-                breakC.setCellStyle(breakStyle);
-                for (int i = 2; i <= 6; i++) {
-                    row.createCell(i).setCellStyle(breakStyle);
-                }
-                sheet.addMergedRegion(new CellRangeAddress(rowIdx - 1, rowIdx - 1, 1, 6));
-                continue;
-            }
-            
-            // Time cell
-            org.apache.poi.ss.usermodel.Cell timeCell = row.createCell(0);
-            timeCell.setCellValue(formatTime(slot) + "\n" + slot.getSlotName());
-            timeCell.setCellStyle(cellStyle);
-            row.setHeightInPoints(45);
-            
-            // Day cells
-            for (int d = 0; d < DAY_NAMES.length; d++) {
-                String key = DAY_NAMES[d] + ":" + slot.getId();
-                TimetableEntry entry = lookup.get(key);
-                org.apache.poi.ss.usermodel.Cell cell = row.createCell(d + 1);
-                
-                if (entry != null) {
-                    String courseName = getCourseShortName(entry.getCourse());
-                    String profInitials = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
-                    String divisionName = "";
-                    String yearLabel = "";
-                    if (entry.getDivision() != null) {
-                        String branch = entry.getDivision().getDepartment() != null ? entry.getDivision().getDepartment().getCode() : "";
-                        String year = String.valueOf(entry.getDivision().getYear());
-                        String div = entry.getDivision().getName();
-                        divisionName = String.format("%s %s %s", branch, year, div).trim();
-                        yearLabel = getYearLabel(entry.getDivision().getYear());
-                    }
+        for (int i = 0; i < gridCols; i++) { if (r0.getCell(i) == null) r0.createCell(i).setCellStyle(metaLblSt); }
+
+        // Row 1: Dept | Academic Year | Room Name
+        Row r1 = sheet.createRow(rowIdx++); r1.setHeightInPoints(22);
+        r1.createCell(0).setCellValue(deptName); r1.getCell(0).setCellStyle(metaLblSt);
+        if (c1End > 0) sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, c1End));
+        r1.createCell(c2Start).setCellValue("ACADEMIC YEAR : " + yearName);
+        r1.getCell(c2Start).setCellStyle(metaValSt);
+        if (c2End > c2Start) sheet.addMergedRegion(new CellRangeAddress(1, 1, c2Start, c2End));
+        if (c3End >= c3Start) {
+            r1.createCell(c3Start).setCellValue(roomName + " (" + roomNumber + ")");
+            r1.getCell(c3Start).setCellStyle(roomNmSt);
+            if (c3End > c3Start) sheet.addMergedRegion(new CellRangeAddress(1, 1, c3Start, c3End));
+        }
+        for (int i = 0; i < gridCols; i++) { if (r1.getCell(i) == null) r1.createCell(i).setCellStyle(metaValSt); }
+
+        // Row 2: empty | Semester | Details
+        Row r2 = sheet.createRow(rowIdx++); r2.setHeightInPoints(18);
+        r2.createCell(0).setCellStyle(emptSt);
+        if (c1End > 0) sheet.addMergedRegion(new CellRangeAddress(2, 2, 0, c1End));
+        r2.createCell(c2Start).setCellValue("SEMESTER : " + semDisp);
+        r2.getCell(c2Start).setCellStyle(metaValSt);
+        if (c2End > c2Start) sheet.addMergedRegion(new CellRangeAddress(2, 2, c2Start, c2End));
+        if (c3End >= c3Start) {
+            r2.createCell(c3Start).setCellValue("Building: " + bldgWing + " | Cap: " + cap + " | Type: " + roomTypeStr + " | Util: " + util + "%");
+            r2.getCell(c3Start).setCellStyle(metaValSt);
+            if (c3End > c3Start) sheet.addMergedRegion(new CellRangeAddress(2, 2, c3Start, c3End));
+        }
+        for (int i = 0; i < gridCols; i++) { if (r2.getCell(i) == null) r2.createCell(i).setCellStyle(emptSt); }
+
+        // Row 3: empty | WEF | empty
+        Row r3 = sheet.createRow(rowIdx++); r3.setHeightInPoints(18);
+        r3.createCell(0).setCellStyle(emptSt);
+        if (c1End > 0) sheet.addMergedRegion(new CellRangeAddress(3, 3, 0, c1End));
+        r3.createCell(c2Start).setCellValue("W.E.F : " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+        r3.getCell(c2Start).setCellStyle(metaValSt);
+        if (c2End > c2Start) sheet.addMergedRegion(new CellRangeAddress(3, 3, c2Start, c2End));
+        if (c3End >= c3Start) {
+            r3.createCell(c3Start).setCellStyle(emptSt);
+            if (c3End > c3Start) sheet.addMergedRegion(new CellRangeAddress(3, 3, c3Start, c3End));
+        }
+        for (int i = 0; i < gridCols; i++) { if (r3.getCell(i) == null) r3.createCell(i).setCellStyle(emptSt); }
+
+        rowIdx++; // blank row
+
+        // ── Grid Header Row 1: Time ranges ──
+        Row tRow = sheet.createRow(rowIdx++); tRow.setHeightInPoints(24);
+        tRow.createCell(0).setCellValue("Time\nDay"); tRow.getCell(0).setCellStyle(hdrSt);
+        int ci = 1;
+        for (TimeSlot s : teachingSlots) {
+            org.apache.poi.ss.usermodel.Cell c = tRow.createCell(ci++);
+            c.setCellValue(formatTime(s)); c.setCellStyle(hdrSt);
+        }
+
+        // Grid Header Row 2: Period numbers
+        Row nRow = sheet.createRow(rowIdx++); nRow.setHeightInPoints(18);
+        nRow.createCell(0).setCellStyle(hdrSt);
+        ci = 1; int pn = 1;
+        for (int i = 0; i < teachingSlots.size(); i++) {
+            org.apache.poi.ss.usermodel.Cell c = nRow.createCell(ci++);
+            c.setCellValue(pn++); c.setCellStyle(hdrSt);
+        }
+
+        // ── Data Rows ──
+        for (int d = 0; d < DAY_NAMES.length; d++) {
+            String day = DAY_NAMES[d];
+            Row dRow = sheet.createRow(rowIdx++); dRow.setHeightInPoints(50);
+            dRow.createCell(0).setCellValue(DAY_LABELS[d].substring(0, 3).toUpperCase());
+            dRow.getCell(0).setCellStyle(daySt);
+            ci = 1;
+            for (TimeSlot slot : teachingSlots) {
+                String key = day + ":" + slot.getId();
+                List<TimetableEntry> ce = multiLookup.getOrDefault(key, Collections.emptyList());
+                org.apache.poi.ss.usermodel.Cell cell = dRow.createCell(ci++);
+                if (!ce.isEmpty()) {
+                    TimetableEntry entry = ce.get(0);
                     boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
-                    
-                    String displayText;
-                    if (isLab && entry.getBatch() != null) {
-                        // Lab format: "FY B1 - Course Name - Division"
-                        String batchName = entry.getBatch().getName();
-                        displayText = yearLabel + " " + batchName + " - " + courseName + " - " + divisionName;
-                    } else {
-                        // Theory format: "SY A - Course Name - Division"
-                        String divName = entry.getDivision() != null ? entry.getDivision().getName() : "";
-                        displayText = yearLabel + " " + divName + " - " + courseName + " - " + divisionName;
+                    String cn = getCourseShortName(entry.getCourse());
+                    String ts = entry.getTeacher() != null ? getProfessorShortName(entry.getTeacher()) : "-";
+                    String di = "";
+                    if (entry.getDivision() != null) {
+                        String yl = entry.getDivision().getYear() != null ? getYearLabel(entry.getDivision().getYear()) : "";
+                        String dn = entry.getDivision().getName() != null ? entry.getDivision().getName() : "";
+                        di = yl + " " + dn;
                     }
-                    
-                    cell.setCellValue(displayText);
-                    cell.setCellStyle(isLab ? labStyle : theoryStyle);
+                    String batch = entry.getBatch() != null ? entry.getBatch().getName() : null;
+                    StringBuilder sb = new StringBuilder();
+                    if (isLab && batch != null) {
+                        sb.append(batch).append("-").append(cn).append(" Lab\n").append(di).append(" - ").append(ts);
+                    } else {
+                        sb.append(cn).append("\n").append(di).append("\n").append(ts);
+                    }
+                    if (ce.size() > 1) {
+                        for (int ei = 1; ei < ce.size(); ei++) {
+                            TimetableEntry ex = ce.get(ei);
+                            sb.append("\n").append(ex.getBatch() != null ? ex.getBatch().getName() : "")
+                              .append(" - ").append(ex.getTeacher() != null ? getProfessorShortName(ex.getTeacher()) : "");
+                        }
+                    }
+                    cell.setCellValue(sb.toString());
+                    cell.setCellStyle(isLab ? labSt : thSt);
                 } else {
-                    cell.setCellValue("-");
-                    cell.setCellStyle(cellStyle);
+                    cell.setCellValue("");
+                    cell.setCellStyle(emptSt);
                 }
             }
         }
-        
-        // Auto-size columns
-        for (int i = 0; i < 7; i++) {
-            sheet.setColumnWidth(i, i == 0 ? 4500 : 5000);
-        }
-        
+        rowIdx++;
+        Row sigRow = sheet.createRow(rowIdx);
+        sigRow.createCell(0).setCellValue("Time Table Coordinator");
+        sigRow.createCell(teachingSlots.size()).setCellValue("HOD " + deptName.replace("DEPARTMENT OF ", ""));
+
+        sheet.setColumnWidth(0, 3500);
+        for (int i = 1; i <= teachingSlots.size(); i++) sheet.setColumnWidth(i, 4200);
+
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         wb.write(out);
         wb.close();
@@ -1243,28 +1475,493 @@ public class TimetableExportService {
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
         List<TimeSlot> slots = getSortedSlots(division);
 
-        String title = String.format("Timetable — %s %s — Year %d — %s — %s",
-            division != null && division.getDepartment() != null ? division.getDepartment().getName() : "",
-            division != null ? division.getName() : "",
-            division != null ? division.getYear() : 0,
-            year != null ? year.getYearName() : "",
-            semester != null ? semester.name().replace("_", " ") : "");
-
-        return buildPDF(entries, slots, title);
+        return buildInstitutionalDivisionPDF(entries, slots, division, year, semester);
     }
 
     public byte[] generateTeacherPDF(Long teacherId, Long academicYearId) throws Exception {
         List<TimetableEntry> entries = timetableService.getTeacherTimetable(teacherId, academicYearId);
         TeacherEntity teacher = teacherRepo.findById(teacherId).orElse(null);
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
-        List<TimeSlot> slots = getSortedSlots(null);
+        List<TimeSlot> slots = getSortedSlotsForEntries(entries);
 
-        String title = String.format("Timetable — %s (%s) — %s",
-            teacher != null ? teacher.getName() : "Unknown",
-            teacher != null ? teacher.getEmployeeId() : "",
-            year != null ? year.getYearName() : "");
+        return buildInstitutionalTeacherPDF(entries, slots, teacher, year);
+    }
 
-        return buildPDF(entries, slots, title);
+    // ═══════════════════════════════════════════════════════════════
+    // INSTITUTIONAL TEACHER PDF (Official MITAOE Faculty Format)
+    // ═══════════════════════════════════════════════════════════════
+
+    private byte[] buildInstitutionalTeacherPDF(
+            List<TimetableEntry> entries,
+            List<TimeSlot> allSlots,
+            TeacherEntity teacher,
+            AcademicYear academicYear) throws Exception {
+
+        // Separate break slots and teaching slots
+        List<TimeSlot> teachingSlots = new ArrayList<>();
+        List<Integer> breakIndices = new ArrayList<>(); // indices into allSlots that are breaks
+        for (int i = 0; i < allSlots.size(); i++) {
+            if (Boolean.TRUE.equals(allSlots.get(i).getIsBreak())) {
+                breakIndices.add(i);
+            } else {
+                teachingSlots.add(allSlots.get(i));
+            }
+        }
+
+        // Build multi-value lookup for entries
+        Map<String, List<TimetableEntry>> multiLookup = buildMultiLookup(entries);
+
+        // Teaching load calculation
+        long theoryCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.THEORY)
+            .count();
+        long labCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.LAB)
+            .count();
+        long totalLoad = theoryCount + labCount;
+
+        // Detect semester(s) from entries
+        Set<Semester> semesters = entries.stream()
+            .map(TimetableEntry::getSemester)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        String semesterDisplay = semesters.stream()
+            .map(this::toRomanNumeral)
+            .collect(Collectors.joining(", "));
+        if (semesterDisplay.isEmpty()) semesterDisplay = "-";
+
+        // Teacher info
+        String facultyName = teacher != null ? teacher.getName().toUpperCase() : "UNKNOWN";
+        String deptName = teacher != null && teacher.getDepartment() != null
+            ? "SCHOOL OF " + teacher.getDepartment().getName().toUpperCase()
+            : "SCHOOL OF COMPUTER ENGINEERING";
+        String yearName = academicYear != null ? academicYear.getYearName() : "-";
+
+        // ── Create PDF — Landscape A4 ──
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document doc = new Document(PageSize.A4.rotate(), 10, 10, 8, 8);
+        PdfWriter.getInstance(doc, out);
+        doc.open();
+
+        // ── Font definitions ──
+        Font titleFont = new Font(Font.HELVETICA, 11, Font.BOLD, Color.BLACK);
+        Font metaLabelFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font metaValueFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+        Font smallFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.DARK_GRAY);
+        Font deptFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font facultyNameFont = new Font(Font.HELVETICA, 9, Font.BOLD, Color.BLACK);
+
+        Color headerBgColor = new Color(214, 228, 240);
+        Font gridHeaderFont = new Font(Font.HELVETICA, 6, Font.BOLD, new Color(27, 42, 78));
+        Font dayFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font cellCourseFont = new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK);
+        Font cellDetailFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.BLACK);
+        Font breakVertFont = new Font(Font.HELVETICA, 6, Font.BOLD, Color.GRAY);
+        Font sigFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+
+        float hdrBorderWidth = 0.5f;
+
+        // ═══════════════════════════════════════════════════════════
+        // HEADER TABLE: 3 columns — Institution | Meta Labels | Meta Values
+        // ═══════════════════════════════════════════════════════════
+        PdfPTable headerTable = new PdfPTable(3);
+        headerTable.setWidthPercentage(100);
+        headerTable.setWidths(new float[]{40f, 30f, 30f});
+
+        // ── ROW 1: Logo+Address | "FACULTY WISE TIME TABLE" | FACULTY NAME ──
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorderWidth(hdrBorderWidth);
+        logoCell.setPadding(3);
+        logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        logoCell.setRowspan(2);
+        try {
+            Image logo = Image.getInstance(getClass().getResource("/static/mitaoe_logo.png"));
+            logo.scaleToFit(120, 28);
+            Paragraph logoPara = new Paragraph();
+            logoPara.add(new Chunk(logo, 0, 0, true));
+            logoPara.add(new Chunk("  Alandi (D), Pune - 412 105", smallFont));
+            logoCell.addElement(logoPara);
+        } catch (Exception e) {
+            logoCell.setPhrase(new Phrase("MIT Academy of Engineering, Alandi (D), Pune - 412 105", metaLabelFont));
+        }
+        headerTable.addCell(logoCell);
+
+        PdfPCell titleCell = new PdfPCell(new Phrase("FACULTY WISE TIME TABLE", titleFont));
+        titleCell.setBorderWidth(hdrBorderWidth);
+        titleCell.setPadding(3);
+        titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        titleCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        titleCell.setRowspan(2);
+        headerTable.addCell(titleCell);
+
+        PdfPCell fnLabel = new PdfPCell(new Phrase("FACULTY NAME", metaLabelFont));
+        fnLabel.setBorderWidth(hdrBorderWidth);
+        fnLabel.setPadding(3);
+        fnLabel.setHorizontalAlignment(Element.ALIGN_CENTER);
+        fnLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(fnLabel);
+
+        // ── ROW 2: (logo continues) | (title continues) | Faculty Name Value ──
+        PdfPCell fnValue = new PdfPCell(new Phrase(facultyName, facultyNameFont));
+        fnValue.setBorderWidth(hdrBorderWidth);
+        fnValue.setPadding(3);
+        fnValue.setHorizontalAlignment(Element.ALIGN_CENTER);
+        fnValue.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(fnValue);
+
+        // ── ROW 3: Department | ACADEMIC YEAR : value | Teaching Load Header ──
+        PdfPCell deptCell = new PdfPCell(new Phrase(deptName, deptFont));
+        deptCell.setBorderWidth(hdrBorderWidth);
+        deptCell.setPadding(3);
+        deptCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        deptCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(deptCell);
+
+        PdfPCell ayCell = new PdfPCell();
+        ayCell.setBorderWidth(hdrBorderWidth);
+        ayCell.setPadding(3);
+        ayCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph ayPara = new Paragraph();
+        ayPara.add(new Chunk("ACADEMIC YEAR : ", metaLabelFont));
+        ayPara.add(new Chunk(yearName, metaValueFont));
+        ayCell.addElement(ayPara);
+        headerTable.addCell(ayCell);
+
+        // Teaching load block: nested table for proper formatting
+        PdfPCell loadCell = new PdfPCell();
+        loadCell.setBorderWidth(hdrBorderWidth);
+        loadCell.setPadding(2);
+        loadCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        loadCell.setRowspan(3);
+        loadCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+
+        // "TEACHING LOAD" title centered above the mini-table
+        Paragraph loadTitle = new Paragraph("TEACHING LOAD", metaLabelFont);
+        loadTitle.setAlignment(Element.ALIGN_CENTER);
+        loadTitle.setSpacingAfter(3);
+        loadCell.addElement(loadTitle);
+
+        // 2-column nested table: Label | Value
+        PdfPTable loadTable = new PdfPTable(2);
+        loadTable.setWidthPercentage(90);
+        loadTable.setWidths(new float[]{60f, 40f});
+
+        Font loadLblFont = new Font(Font.HELVETICA, 6.5f, Font.NORMAL, Color.BLACK);
+        Font loadValFont = new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK);
+
+        // Row: TH
+        PdfPCell thLbl = new PdfPCell(new Phrase("TH", loadLblFont));
+        thLbl.setBorderWidth(0.3f); thLbl.setPadding(2);
+        thLbl.setHorizontalAlignment(Element.ALIGN_LEFT);
+        loadTable.addCell(thLbl);
+        PdfPCell thVal = new PdfPCell(new Phrase(String.valueOf(theoryCount), loadValFont));
+        thVal.setBorderWidth(0.3f); thVal.setPadding(2);
+        thVal.setHorizontalAlignment(Element.ALIGN_CENTER);
+        loadTable.addCell(thVal);
+
+        // Row: PR / TU
+        PdfPCell prLbl = new PdfPCell(new Phrase("PR / TU", loadLblFont));
+        prLbl.setBorderWidth(0.3f); prLbl.setPadding(2);
+        prLbl.setHorizontalAlignment(Element.ALIGN_LEFT);
+        loadTable.addCell(prLbl);
+        PdfPCell prVal = new PdfPCell(new Phrase(String.valueOf(labCount), loadValFont));
+        prVal.setBorderWidth(0.3f); prVal.setPadding(2);
+        prVal.setHorizontalAlignment(Element.ALIGN_CENTER);
+        loadTable.addCell(prVal);
+
+        // Row: TOTAL
+        PdfPCell totLbl = new PdfPCell(new Phrase("TOTAL", new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK)));
+        totLbl.setBorderWidth(0.3f); totLbl.setPadding(2);
+        totLbl.setHorizontalAlignment(Element.ALIGN_LEFT);
+        loadTable.addCell(totLbl);
+        PdfPCell totVal = new PdfPCell(new Phrase(String.valueOf(totalLoad), new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK)));
+        totVal.setBorderWidth(0.3f); totVal.setPadding(2);
+        totVal.setHorizontalAlignment(Element.ALIGN_CENTER);
+        loadTable.addCell(totVal);
+
+        loadCell.addElement(loadTable);
+        headerTable.addCell(loadCell);
+
+        // ── ROW 4: (empty) | SEMESTER : value | (load continues) ──
+        PdfPCell emptyCell4 = new PdfPCell(new Phrase("", metaValueFont));
+        emptyCell4.setBorderWidth(hdrBorderWidth);
+        emptyCell4.setPadding(3);
+        headerTable.addCell(emptyCell4);
+
+        PdfPCell semCell = new PdfPCell();
+        semCell.setBorderWidth(hdrBorderWidth);
+        semCell.setPadding(3);
+        semCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph semPara = new Paragraph();
+        semPara.add(new Chunk("SEMESTER : ", metaLabelFont));
+        semPara.add(new Chunk(semesterDisplay, metaValueFont));
+        semCell.addElement(semPara);
+        headerTable.addCell(semCell);
+
+        // ── ROW 5: (empty) | W.E.F : date | (load continues) ──
+        PdfPCell emptyCell5 = new PdfPCell(new Phrase("", metaValueFont));
+        emptyCell5.setBorderWidth(hdrBorderWidth);
+        emptyCell5.setPadding(3);
+        headerTable.addCell(emptyCell5);
+
+        PdfPCell wefCell = new PdfPCell();
+        wefCell.setBorderWidth(hdrBorderWidth);
+        wefCell.setPadding(3);
+        wefCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph wefPara = new Paragraph();
+        wefPara.add(new Chunk("W.E.F : ", metaLabelFont));
+        wefPara.add(new Chunk(LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")), metaValueFont));
+        wefCell.addElement(wefPara);
+        headerTable.addCell(wefCell);
+
+        doc.add(headerTable);
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 2)));
+
+        // ═══════════════════════════════════════════════════════════
+        // TIMETABLE GRID: Days = Rows, Slots = Columns (inverted grid)
+        // With break columns rendered as vertical merged text
+        // ═══════════════════════════════════════════════════════════
+
+        // Build column structure: Day label + all slots (teaching + breaks interleaved)
+        // allSlots is already sorted by time; some are breaks, some are teaching
+        int totalCols = 1 + allSlots.size(); // 1 for Day column + all slots
+        PdfPTable grid = new PdfPTable(totalCols);
+        grid.setWidthPercentage(100);
+
+        // Column widths: day=8%, each slot gets equal share of 92%
+        float[] colWidths = new float[totalCols];
+        colWidths[0] = 7f;
+        float slotWidth = 93f / allSlots.size();
+        for (int i = 1; i < totalCols; i++) {
+            // Break columns narrower
+            colWidths[i] = Boolean.TRUE.equals(allSlots.get(i - 1).getIsBreak()) ? slotWidth * 0.5f : slotWidth;
+        }
+        grid.setWidths(colWidths);
+
+        // ── Header Row 1: "Time" + time ranges ──
+        PdfPCell timeHeader = new PdfPCell(new Phrase("Time", gridHeaderFont));
+        timeHeader.setBackgroundColor(headerBgColor);
+        timeHeader.setBorderWidth(0.5f);
+        timeHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
+        timeHeader.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        timeHeader.setPadding(2);
+        timeHeader.setRowspan(2);
+        grid.addCell(timeHeader);
+
+        for (int i = 0; i < allSlots.size(); i++) {
+            TimeSlot slot = allSlots.get(i);
+            if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                // Break column header — vertical text, merged with row 2
+                PdfPCell breakHdr = new PdfPCell();
+                breakHdr.setBackgroundColor(new Color(240, 240, 240));
+                breakHdr.setBorderWidth(0.5f);
+                breakHdr.setHorizontalAlignment(Element.ALIGN_CENTER);
+                breakHdr.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                breakHdr.setPadding(1);
+                breakHdr.setRowspan(2 + DAY_NAMES.length); // span header rows + all day rows
+
+                // Vertical text for break name
+                String breakName = slot.getSlotName() != null ? slot.getSlotName() : "BREAK";
+                StringBuilder vertText = new StringBuilder();
+                for (char c : breakName.toCharArray()) {
+                    vertText.append(c).append("\n");
+                }
+                breakHdr.setPhrase(new Phrase(vertText.toString().trim(), breakVertFont));
+                grid.addCell(breakHdr);
+            } else {
+                // Teaching slot header — time range
+                String timeRange = formatTime(slot);
+                PdfPCell slotHdr = new PdfPCell(new Phrase(timeRange, gridHeaderFont));
+                slotHdr.setBackgroundColor(headerBgColor);
+                slotHdr.setBorderWidth(0.5f);
+                slotHdr.setHorizontalAlignment(Element.ALIGN_CENTER);
+                slotHdr.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                slotHdr.setPadding(2);
+                grid.addCell(slotHdr);
+            }
+        }
+
+        // ── Header Row 2: "Day" + period numbers ──
+        // Note: "Day" header is already part of the rowspan from Row 1
+        int periodNum = 1;
+        for (int i = 0; i < allSlots.size(); i++) {
+            TimeSlot slot = allSlots.get(i);
+            if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                // Already merged via rowspan above — skip
+                continue;
+            }
+            PdfPCell numCell = new PdfPCell(new Phrase(String.valueOf(periodNum++), gridHeaderFont));
+            numCell.setBackgroundColor(headerBgColor);
+            numCell.setBorderWidth(0.5f);
+            numCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            numCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            numCell.setPadding(2);
+            grid.addCell(numCell);
+        }
+
+        // Track merged cells for lab sessions
+        Set<String> mergedCells = new HashSet<>();
+
+        // ── Data Rows: one per day ──
+        for (int d = 0; d < DAY_NAMES.length; d++) {
+            String day = DAY_NAMES[d];
+            String dayLabel = DAY_LABELS[d].substring(0, 3).toUpperCase();
+
+            PdfPCell dayCell = new PdfPCell(new Phrase(dayLabel, dayFont));
+            dayCell.setBorderWidth(0.5f);
+            dayCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            dayCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            dayCell.setPadding(3);
+            dayCell.setMinimumHeight(45);
+            grid.addCell(dayCell);
+
+            for (int slotIdx = 0; slotIdx < allSlots.size(); slotIdx++) {
+                TimeSlot slot = allSlots.get(slotIdx);
+
+                if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                    // Break columns already handled by rowspan above
+                    continue;
+                }
+
+                String cellKey = day + ":" + slotIdx;
+                if (mergedCells.contains(cellKey)) {
+                    // This cell is part of a colspan merge — skip
+                    continue;
+                }
+
+                String key = day + ":" + slot.getId();
+                List<TimetableEntry> cellEntries = multiLookup.getOrDefault(key, Collections.emptyList());
+
+                PdfPCell cell = new PdfPCell();
+                cell.setBorderWidth(0.5f);
+                cell.setPadding(2);
+                cell.setMinimumHeight(45);
+                cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+
+                if (!cellEntries.isEmpty()) {
+                    TimetableEntry entry = cellEntries.get(0);
+                    boolean isLab = entry.getCourse() != null && entry.getCourse().getCourseType() == CourseType.LAB;
+                    String courseName = getCourseShortName(entry.getCourse());
+                    String roomNum = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "-";
+
+                    // Division/batch info
+                    String divInfo = "";
+                    if (entry.getDivision() != null) {
+                        String yearLabel = entry.getDivision().getYear() != null ? getYearLabel(entry.getDivision().getYear()) : "";
+                        String divName = entry.getDivision().getName() != null ? entry.getDivision().getName() : "";
+                        divInfo = yearLabel + " " + divName;
+                    }
+                    String batchName = entry.getBatch() != null ? entry.getBatch().getName() : null;
+
+                    // Check for colspan merge (consecutive lab slots)
+                    boolean shouldMerge = false;
+                    if (isLab && slotIdx + 1 < allSlots.size()) {
+                        // Find next non-break slot
+                        int nextTeachingIdx = -1;
+                        for (int ni = slotIdx + 1; ni < allSlots.size(); ni++) {
+                            if (!Boolean.TRUE.equals(allSlots.get(ni).getIsBreak())) {
+                                nextTeachingIdx = ni;
+                                break;
+                            }
+                        }
+                        if (nextTeachingIdx >= 0) {
+                            TimeSlot nextSlot = allSlots.get(nextTeachingIdx);
+                            String nextKey = day + ":" + nextSlot.getId();
+                            List<TimetableEntry> nextEntries = multiLookup.getOrDefault(nextKey, Collections.emptyList());
+                            if (!nextEntries.isEmpty()) {
+                                TimetableEntry nextEntry = nextEntries.get(0);
+                                if (nextEntry.getCourse() != null &&
+                                    nextEntry.getCourse().getCourseType() == CourseType.LAB &&
+                                    entry.getCourse().getId().equals(nextEntry.getCourse().getId()) &&
+                                    Objects.equals(entry.getTeacher() != null ? entry.getTeacher().getId() : null,
+                                                   nextEntry.getTeacher() != null ? nextEntry.getTeacher().getId() : null)) {
+                                    shouldMerge = true;
+                                    // Calculate colspan (skip over any breaks between)
+                                    int colspan = nextTeachingIdx - slotIdx + 1;
+                                    // Count how many break cells are in between (they're already rowspanned)
+                                    int breaksBetween = 0;
+                                    for (int bi = slotIdx + 1; bi < nextTeachingIdx; bi++) {
+                                        if (Boolean.TRUE.equals(allSlots.get(bi).getIsBreak())) {
+                                            breaksBetween++;
+                                        }
+                                    }
+                                    cell.setColspan(colspan - breaksBetween);
+                                    mergedCells.add(day + ":" + nextTeachingIdx);
+                                }
+                            }
+                        }
+                    }
+
+                    // Build cell content — NO teacher short name (it's in the header)
+                    Paragraph cellPara = new Paragraph();
+                    cellPara.setAlignment(Element.ALIGN_CENTER);
+                    cellPara.setLeading(8f);
+
+                    if (isLab && batchName != null) {
+                        // Lab format: "B2-DAA Lab\nCNL II (H204B)"
+                        cellPara.add(new Chunk(divInfo, cellDetailFont));
+                        cellPara.add(new Chunk("\n", cellDetailFont));
+                        cellPara.add(new Chunk(batchName + "-" + courseName + " Lab", cellCourseFont));
+                        cellPara.add(new Chunk("\n", cellDetailFont));
+                        cellPara.add(new Chunk("(" + roomNum + ")", cellDetailFont));
+                    } else if (isLab) {
+                        // Lab without batch
+                        cellPara.add(new Chunk(courseName + " Lab", cellCourseFont));
+                        cellPara.add(new Chunk("\n", cellDetailFont));
+                        cellPara.add(new Chunk(divInfo + " (" + roomNum + ")", cellDetailFont));
+                    } else {
+                        // Theory format: "DAA\nTY A\nH301"
+                        cellPara.add(new Chunk(courseName, cellCourseFont));
+                        cellPara.add(new Chunk("\n", cellDetailFont));
+                        cellPara.add(new Chunk(divInfo, cellDetailFont));
+                        cellPara.add(new Chunk("\n", cellDetailFont));
+                        cellPara.add(new Chunk(roomNum, cellDetailFont));
+                    }
+
+                    // Handle multiple batches in same slot
+                    if (cellEntries.size() > 1) {
+                        for (int ei = 1; ei < cellEntries.size(); ei++) {
+                            TimetableEntry extraEntry = cellEntries.get(ei);
+                            String extraBatch = extraEntry.getBatch() != null ? extraEntry.getBatch().getName() : "";
+                            String extraRoom = extraEntry.getRoom() != null ? extraEntry.getRoom().getRoomNumber() : "";
+                            cellPara.add(new Chunk("\n" + extraBatch + " (" + extraRoom + ")", cellDetailFont));
+                        }
+                    }
+
+                    cell.addElement(cellPara);
+                    cell.setBackgroundColor(isLab ? new Color(248, 244, 255) : Color.WHITE);
+                }
+
+                grid.addCell(cell);
+            }
+        }
+
+        doc.add(grid);
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 4)));
+
+        // ═══════════════════════════════════════════════════════════
+        // SIGNATURE SECTION
+        // ═══════════════════════════════════════════════════════════
+        PdfPTable sigTable = new PdfPTable(2);
+        sigTable.setWidthPercentage(100);
+        sigTable.setWidths(new float[]{50f, 50f});
+
+        PdfPCell sigLeft = new PdfPCell(new Phrase("Time Table Coordinator", sigFont));
+        sigLeft.setBorder(0);
+        sigLeft.setPaddingTop(12);
+        sigLeft.setHorizontalAlignment(Element.ALIGN_LEFT);
+        sigTable.addCell(sigLeft);
+
+        PdfPCell sigRight = new PdfPCell(new Phrase("HOD " + deptName.replace("SCHOOL OF ", ""), sigFont));
+        sigRight.setBorder(0);
+        sigRight.setPaddingTop(12);
+        sigRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        sigTable.addCell(sigRight);
+
+        doc.add(sigTable);
+        doc.close();
+        return out.toByteArray();
     }
 
     private byte[] buildPDF(List<TimetableEntry> entries, List<TimeSlot> slots, String title) throws Exception {
@@ -1433,6 +2130,583 @@ public class TimetableExportService {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // INSTITUTIONAL DIVISION PDF (Official MITAOE Format)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Convert semester enum to Roman numeral for institutional display.
+     * SEM_1 → I, SEM_2 → II, ..., SEM_8 → VIII
+     */
+    private String toRomanNumeral(Semester semester) {
+        if (semester == null) return "";
+        switch (semester) {
+            case SEM_1: return "I";
+            case SEM_2: return "II";
+            case SEM_3: return "III";
+            case SEM_4: return "IV";
+            case SEM_5: return "V";
+            case SEM_6: return "VI";
+            case SEM_7: return "VII";
+            case SEM_8: return "VIII";
+            default: return semester.name();
+        }
+    }
+
+    /**
+     * Build a multi-value lookup map for timetable entries.
+     * Key: "DAYNAME:slotId", Value: list of all entries at that day+slot.
+     * This handles lab sessions where multiple batches occupy the same slot.
+     */
+    private Map<String, List<TimetableEntry>> buildMultiLookup(List<TimetableEntry> entries) {
+        Map<String, List<TimetableEntry>> multiLookup = new HashMap<>();
+        for (TimetableEntry e : entries) {
+            if (e.getDayOfWeek() != null && e.getTimeSlot() != null) {
+                String key = e.getDayOfWeek().name() + ":" + e.getTimeSlot().getId();
+                multiLookup.computeIfAbsent(key, k -> new ArrayList<>()).add(e);
+            }
+        }
+        return multiLookup;
+    }
+
+    /**
+     * Generate division timetable PDF in the official MITAOE institutional format.
+     *
+     * Layout: Landscape A4, single page.
+     * Grid axes: Days = rows (MON-SAT), Time slots = columns.
+     * Includes: institutional header with logo, metadata panel, teaching load,
+     * course/teacher reference tables, and signature section.
+     */
+    private byte[] buildInstitutionalDivisionPDF(
+            List<TimetableEntry> entries,
+            List<TimeSlot> slots,
+            Division division,
+            AcademicYear academicYear,
+            Semester semester) throws Exception {
+
+        // ── Multi-value lookup (supports multiple lab batches per slot) ──
+        Map<String, List<TimetableEntry>> multiLookup = buildMultiLookup(entries);
+
+        // ── Calculate teaching load ──
+        long theoryCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.THEORY)
+            .count();
+        long labCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.LAB)
+            .count();
+        long totalCount = theoryCount + labCount;
+
+        // ── Collect distinct courses and teachers for reference tables ──
+        Map<Long, CourseEntity> distinctCourses = new LinkedHashMap<>();
+        Map<Long, TeacherEntity> distinctTeachers = new LinkedHashMap<>();
+        Map<Long, Set<String>> courseRooms = new LinkedHashMap<>();
+        Map<Long, Set<String>> teacherCourses = new LinkedHashMap<>();
+
+        for (TimetableEntry e : entries) {
+            if (e.getCourse() != null) {
+                distinctCourses.putIfAbsent(e.getCourse().getId(), e.getCourse());
+                String roomNum = e.getRoom() != null ? e.getRoom().getRoomNumber() : "";
+                courseRooms.computeIfAbsent(e.getCourse().getId(), k -> new LinkedHashSet<>()).add(roomNum);
+            }
+            if (e.getTeacher() != null) {
+                distinctTeachers.putIfAbsent(e.getTeacher().getId(), e.getTeacher());
+                String courseShort = getCourseShortName(e.getCourse());
+                teacherCourses.computeIfAbsent(e.getTeacher().getId(), k -> new LinkedHashSet<>()).add(courseShort);
+            }
+        }
+
+        // ── Create PDF document — Landscape A4, tight margins ──
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document doc = new Document(PageSize.A4.rotate(), 10, 10, 8, 8);
+        PdfWriter.getInstance(doc, out);
+        doc.open();
+
+        // ── Font definitions ──
+        Font titleFont = new Font(Font.HELVETICA, 11, Font.BOLD, Color.BLACK);
+        Font metaLabelFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font metaValueFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+        Font smallFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.DARK_GRAY);
+        Font deptFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+
+        Color headerBgColor = new Color(214, 228, 240); // Light steel blue
+        Font gridHeaderFont = new Font(Font.HELVETICA, 6, Font.BOLD, new Color(27, 42, 78)); // Dark navy text
+        Font dayFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.BLACK);
+        Font cellCourseFont = new Font(Font.HELVETICA, 6.5f, Font.BOLD, Color.BLACK);
+        Font cellDetailFont = new Font(Font.HELVETICA, 6, Font.NORMAL, Color.BLACK);
+        Font labBatchFont = new Font(Font.HELVETICA, 5.5f, Font.NORMAL, Color.BLACK);
+        Font breakFont = new Font(Font.HELVETICA, 5.5f, Font.ITALIC, Color.GRAY);
+        Font refHeaderFont = new Font(Font.HELVETICA, 6, Font.BOLD, Color.BLACK);
+        Font refCellFont = new Font(Font.HELVETICA, 5.5f, Font.NORMAL, Color.BLACK);
+        Font sigFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 1: INSTITUTIONAL HEADER (3-col × 6-row bordered table)
+        // ═══════════════════════════════════════════════════════════
+
+        // Precompute values
+        String classLabel = (division != null ? getYearLabel(division.getYear()) : "") + " " +
+            (division != null && division.getDepartment() != null ? division.getDepartment().getName() : "");
+        String coordinator = division != null && division.getClassTeacher() != null
+            ? division.getClassTeacher() : "";
+        String divName = division != null ? division.getName() : "";
+        String deptName = division != null && division.getDepartment() != null
+            ? "DEPARTMENT OF " + division.getDepartment().getName().toUpperCase()
+            : "DEPARTMENT OF COMPUTER ENGINEERING";
+
+        // Table: 3 columns × 6 rows, all bordered
+        //  Col 0 (50%): Institution info  |  Col 1 (22%): Meta Label  |  Col 2 (28%): Meta Value
+        PdfPTable headerTable = new PdfPTable(3);
+        headerTable.setWidthPercentage(100);
+        headerTable.setWidths(new float[]{50f, 22f, 28f});
+
+        float hdrBorderWidth = 0.5f;
+
+        // ──────── ROW 1: Logo + Address | CLASS | value ────────
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorderWidth(hdrBorderWidth);
+        logoCell.setPadding(3);
+        logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        try {
+            Image logo = Image.getInstance(getClass().getResource("/static/mitaoe_logo.png"));
+            logo.scaleToFit(120, 28);
+            Paragraph logoPara = new Paragraph();
+            logoPara.add(new Chunk(logo, 0, 0, true));
+            logoPara.add(new Chunk("  Alandi (D), Pune - 412 105", smallFont));
+            logoCell.addElement(logoPara);
+        } catch (Exception e) {
+            logoCell.setPhrase(new Phrase("MIT Academy of Engineering, Alandi (D), Pune - 412 105", metaLabelFont));
+        }
+        headerTable.addCell(logoCell);
+
+        PdfPCell r1Lbl = new PdfPCell(new Phrase("CLASS", metaLabelFont));
+        r1Lbl.setBorderWidth(hdrBorderWidth); r1Lbl.setPadding(3); r1Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r1Lbl);
+        PdfPCell r1Val = new PdfPCell(new Phrase(classLabel.trim(), metaValueFont));
+        r1Val.setBorderWidth(hdrBorderWidth); r1Val.setPadding(3); r1Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r1Val);
+
+        // ──────── ROW 2: Department | CLASS COORDINATOR | value ────────
+        PdfPCell deptCell = new PdfPCell(new Phrase(deptName, deptFont));
+        deptCell.setBorderWidth(hdrBorderWidth); deptCell.setPadding(3); deptCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(deptCell);
+
+        PdfPCell r2Lbl = new PdfPCell(new Phrase("CLASS COORDINATOR", metaLabelFont));
+        r2Lbl.setBorderWidth(hdrBorderWidth); r2Lbl.setPadding(3); r2Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r2Lbl);
+        PdfPCell r2Val = new PdfPCell(new Phrase(coordinator, metaValueFont));
+        r2Val.setBorderWidth(hdrBorderWidth); r2Val.setPadding(3); r2Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r2Val);
+
+        // ──────── ROW 3: CLASS WISE TIME TABLE | DIVISION | value ────────
+        PdfPCell titleCell = new PdfPCell(new Phrase("CLASS WISE TIME TABLE", titleFont));
+        titleCell.setBorderWidth(hdrBorderWidth); titleCell.setPadding(3);
+        titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        titleCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(titleCell);
+
+        PdfPCell r3Lbl = new PdfPCell(new Phrase("DIVISION", metaLabelFont));
+        r3Lbl.setBorderWidth(hdrBorderWidth); r3Lbl.setPadding(3); r3Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r3Lbl);
+        PdfPCell r3Val = new PdfPCell(new Phrase(divName, metaValueFont));
+        r3Val.setBorderWidth(hdrBorderWidth); r3Val.setPadding(3); r3Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r3Val);
+
+        // ──────── ROW 4: ACADEMIC YEAR | THEORY | value ────────
+        PdfPCell ayCell = new PdfPCell(new Phrase("ACADEMIC YEAR : " +
+            (academicYear != null ? academicYear.getYearName() : ""), metaValueFont));
+        ayCell.setBorderWidth(hdrBorderWidth); ayCell.setPadding(3);
+        ayCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        ayCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(ayCell);
+
+        PdfPCell r4Lbl = new PdfPCell(new Phrase("THEORY", metaLabelFont));
+        r4Lbl.setBorderWidth(hdrBorderWidth); r4Lbl.setPadding(3); r4Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r4Lbl);
+        PdfPCell r4Val = new PdfPCell(new Phrase(String.valueOf(theoryCount), metaValueFont));
+        r4Val.setBorderWidth(hdrBorderWidth); r4Val.setPadding(3); r4Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r4Val);
+
+        // ──────── ROW 5: SEMESTER | PRACTICAL/TUTORIAL | value ────────
+        PdfPCell semCell = new PdfPCell(new Phrase("SEMESTER : " + toRomanNumeral(semester), metaValueFont));
+        semCell.setBorderWidth(hdrBorderWidth); semCell.setPadding(3);
+        semCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        semCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(semCell);
+
+        PdfPCell r5Lbl = new PdfPCell(new Phrase("PRACTICAL/TUTORIAL", metaLabelFont));
+        r5Lbl.setBorderWidth(hdrBorderWidth); r5Lbl.setPadding(3); r5Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r5Lbl);
+        PdfPCell r5Val = new PdfPCell(new Phrase(String.valueOf(labCount), metaValueFont));
+        r5Val.setBorderWidth(hdrBorderWidth); r5Val.setPadding(3); r5Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r5Val);
+
+        // ──────── ROW 6: W.E.F. + Rev No. | TOTAL | value ────────
+        PdfPCell wefCell = new PdfPCell();
+        wefCell.setBorderWidth(hdrBorderWidth); wefCell.setPadding(3);
+        wefCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Paragraph wefPara = new Paragraph("W.E.F. : " +
+            LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")), metaValueFont);
+        wefPara.setAlignment(Element.ALIGN_CENTER);
+        wefCell.addElement(wefPara);
+        Paragraph revPara = new Paragraph("Rev. No. : 01", smallFont);
+        revPara.setAlignment(Element.ALIGN_RIGHT);
+        wefCell.addElement(revPara);
+        headerTable.addCell(wefCell);
+
+        PdfPCell r6Lbl = new PdfPCell(new Phrase("TOTAL", metaLabelFont));
+        r6Lbl.setBorderWidth(hdrBorderWidth); r6Lbl.setPadding(3); r6Lbl.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r6Lbl);
+        PdfPCell r6Val = new PdfPCell(new Phrase(String.valueOf(totalCount), metaLabelFont));
+        r6Val.setBorderWidth(hdrBorderWidth); r6Val.setPadding(3); r6Val.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        headerTable.addCell(r6Val);
+
+        doc.add(headerTable);
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 2: TIMETABLE GRID (Days = Rows, Time = Columns)
+        // ═══════════════════════════════════════════════════════════
+
+        int numSlots = slots.size();
+        PdfPTable grid = new PdfPTable(numSlots + 1); // 1 day column + N slot columns
+        grid.setWidthPercentage(100);
+
+        // Calculate column widths: day col narrow, breaks narrow, regular slots equal
+        float[] colWidths = new float[numSlots + 1];
+        colWidths[0] = 4f; // Day label column
+        float totalSlotWidth = 96f;
+        int breakCount = 0;
+        int regularCount = 0;
+        for (TimeSlot s : slots) {
+            if (Boolean.TRUE.equals(s.getIsBreak())) breakCount++;
+            else regularCount++;
+        }
+        float breakWidth = 1.8f;
+        float regularWidth = regularCount > 0
+            ? (totalSlotWidth - (breakCount * breakWidth)) / regularCount
+            : totalSlotWidth / numSlots;
+
+        for (int i = 0; i < numSlots; i++) {
+            colWidths[i + 1] = Boolean.TRUE.equals(slots.get(i).getIsBreak()) ? breakWidth : regularWidth;
+        }
+        grid.setWidths(colWidths);
+
+        // ── Header row: "Day/Time" + slot time ranges ──
+        PdfPCell dayTimeHeader = new PdfPCell(new Phrase("Day/\nTime", gridHeaderFont));
+        dayTimeHeader.setBackgroundColor(headerBgColor);
+        dayTimeHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
+        dayTimeHeader.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        dayTimeHeader.setPadding(2);
+        dayTimeHeader.setBorderWidth(0.5f);
+        grid.addCell(dayTimeHeader);
+
+        int periodNumber = 1;
+        for (TimeSlot slot : slots) {
+            PdfPCell slotHeader = new PdfPCell();
+            slotHeader.setBackgroundColor(headerBgColor);
+            slotHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
+            slotHeader.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            slotHeader.setPadding(1);
+            slotHeader.setBorderWidth(0.5f);
+
+            if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                // Break header: just a narrow column
+                slotHeader.setPhrase(new Phrase("", gridHeaderFont));
+            } else {
+                // Regular slot: time range + period number
+                String timeStr = slot.getStartTime() != null
+                    ? slot.getStartTime().toString().substring(0, 5) : "??:??";
+                String endStr = slot.getEndTime() != null
+                    ? slot.getEndTime().toString().substring(0, 5) : "??:??";
+                Paragraph timePara = new Paragraph(timeStr + "\nto\n" + endStr, new Font(Font.HELVETICA, 5, Font.BOLD, new Color(27, 42, 78)));
+                timePara.setAlignment(Element.ALIGN_CENTER);
+                slotHeader.addElement(timePara);
+                Paragraph numPara = new Paragraph(String.valueOf(periodNumber), new Font(Font.HELVETICA, 7, Font.BOLD, new Color(27, 42, 78)));
+                numPara.setAlignment(Element.ALIGN_CENTER);
+                slotHeader.addElement(numPara);
+                periodNumber++;
+            }
+            grid.addCell(slotHeader);
+        }
+
+        // ── Day rows (6 rows: MON through SAT) ──
+        String[] dayKeys = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"};
+        String[] dayLabels = {"MON", "TUE", "WED", "THU", "FRI", "SAT"};
+
+        for (int d = 0; d < dayKeys.length; d++) {
+            String dayKey = dayKeys[d];
+            String dayLabel = dayLabels[d];
+
+            // Day label cell
+            PdfPCell dayCell = new PdfPCell(new Phrase(dayLabel, dayFont));
+            dayCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            dayCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            dayCell.setPadding(2);
+            dayCell.setBorderWidth(0.5f);
+            dayCell.setMinimumHeight(38);
+            grid.addCell(dayCell);
+
+            // Slot cells for this day
+            for (TimeSlot slot : slots) {
+                if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                    if (d == 0) {
+                        // First day row: create merged break cell spanning all 6 day rows
+                        PdfPCell brkCell = new PdfPCell();
+                        brkCell.setRowspan(dayKeys.length); // Span all day rows
+                        brkCell.setBackgroundColor(new Color(245, 245, 245));
+                        brkCell.setBorderWidth(0.5f);
+                        brkCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                        brkCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                        brkCell.setPadding(1);
+
+                        // Stacked vertical letter text
+                        String breakText;
+                        String slotName = slot.getSlotName() != null ? slot.getSlotName().toLowerCase() : "";
+                        if (slotName.contains("lunch")) {
+                            breakText = "L\nU\nN\nC\nH\n\nB\nR\nE\nA\nK";
+                        } else {
+                            breakText = "S\nH\nO\nR\nT\n\nB\nR\nE\nA\nK";
+                        }
+                        Font brkVertFont = new Font(Font.HELVETICA, 5.5f, Font.BOLD, Color.GRAY);
+                        Paragraph brkPara = new Paragraph(breakText, brkVertFont);
+                        brkPara.setAlignment(Element.ALIGN_CENTER);
+                        brkPara.setLeading(6.5f);
+                        brkCell.addElement(brkPara);
+                        grid.addCell(brkCell);
+                    }
+                    // For subsequent day rows (d > 0), do NOT add a cell — rowspan covers it
+                } else {
+                    // Regular entry cell
+                    String key = dayKey + ":" + slot.getId();
+                    List<TimetableEntry> slotEntries = multiLookup.getOrDefault(key, Collections.emptyList());
+
+                    PdfPCell entryCell = new PdfPCell();
+                    entryCell.setPadding(2);
+                    entryCell.setBorderWidth(0.5f);
+                    entryCell.setMinimumHeight(38);
+                    entryCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+
+                    if (!slotEntries.isEmpty()) {
+                        // Check if this is a multi-batch lab slot
+                        boolean hasMultipleBatches = slotEntries.size() > 1;
+                        boolean allLabs = slotEntries.stream()
+                            .allMatch(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.LAB);
+
+                        if (hasMultipleBatches && allLabs) {
+                            // Lab cell: list all batches, one line each
+                            // Sort by batch name for consistent ordering
+                            slotEntries.sort((a, b) -> {
+                                String batchA = a.getBatch() != null ? a.getBatch().getName() : "";
+                                String batchB = b.getBatch() != null ? b.getBatch().getName() : "";
+                                return batchA.compareTo(batchB);
+                            });
+                            for (TimetableEntry entry : slotEntries) {
+                                String batchName = entry.getBatch() != null ? entry.getBatch().getName() : "";
+                                String courseName = getCourseShortName(entry.getCourse());
+                                String teacherName = getProfessorShortName(entry.getTeacher());
+                                String room = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
+                                String line = batchName + "-" + courseName + "-" + teacherName + " (" + room + ")";
+                                Paragraph linePara = new Paragraph(line, labBatchFont);
+                                linePara.setAlignment(Element.ALIGN_CENTER);
+                                linePara.setLeading(6.5f);
+                                entryCell.addElement(linePara);
+                            }
+                        } else {
+                            // Single entry (theory or single lab)
+                            TimetableEntry entry = slotEntries.get(0);
+                            String courseName = getCourseShortName(entry.getCourse());
+                            String teacherName = getProfessorShortName(entry.getTeacher());
+                            String room = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
+
+                            boolean isLab = entry.getCourse() != null
+                                && entry.getCourse().getCourseType() == CourseType.LAB;
+
+                            if (isLab && entry.getBatch() != null) {
+                                // Single lab batch
+                                String batchName = entry.getBatch().getName();
+                                Paragraph p1 = new Paragraph(batchName + "-" + courseName, cellCourseFont);
+                                p1.setAlignment(Element.ALIGN_CENTER);
+                                p1.setLeading(7f);
+                                entryCell.addElement(p1);
+
+                                Paragraph p2 = new Paragraph(teacherName, cellDetailFont);
+                                p2.setAlignment(Element.ALIGN_CENTER);
+                                p2.setLeading(6.5f);
+                                entryCell.addElement(p2);
+
+                                Paragraph p3 = new Paragraph(room, cellDetailFont);
+                                p3.setAlignment(Element.ALIGN_CENTER);
+                                p3.setLeading(6.5f);
+                                entryCell.addElement(p3);
+                            } else {
+                                // Theory: 3 lines stacked centered
+                                Paragraph p1 = new Paragraph(courseName, cellCourseFont);
+                                p1.setAlignment(Element.ALIGN_CENTER);
+                                p1.setLeading(7f);
+                                entryCell.addElement(p1);
+
+                                Paragraph p2 = new Paragraph(teacherName, cellDetailFont);
+                                p2.setAlignment(Element.ALIGN_CENTER);
+                                p2.setLeading(6.5f);
+                                entryCell.addElement(p2);
+
+                                Paragraph p3 = new Paragraph(room, cellDetailFont);
+                                p3.setAlignment(Element.ALIGN_CENTER);
+                                p3.setLeading(6.5f);
+                                entryCell.addElement(p3);
+                            }
+                        }
+                    }
+                    // Empty cells stay blank (no dash)
+                    grid.addCell(entryCell);
+                }
+            }
+        }
+
+        doc.add(grid);
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 3: REFERENCE TABLES
+        // ═══════════════════════════════════════════════════════════
+
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 2)));
+
+        // Wrapper table: 2 columns for side-by-side reference tables
+        PdfPTable refWrapper = new PdfPTable(2);
+        refWrapper.setWidthPercentage(100);
+        refWrapper.setWidths(new float[]{55f, 45f});
+
+        // ── Left: Course Reference Table ──
+        PdfPTable courseRefTable = new PdfPTable(4);
+        courseRefTable.setWidthPercentage(100);
+        courseRefTable.setWidths(new float[]{20f, 35f, 15f, 30f});
+
+        // Course table header
+        String[] courseHeaders = {"Course Code", "Course Name (Short)", "Type", "Room No."};
+        for (String h : courseHeaders) {
+            PdfPCell hCell = new PdfPCell(new Phrase(h, refHeaderFont));
+            hCell.setBackgroundColor(new Color(230, 230, 230));
+            hCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            hCell.setPadding(2);
+            hCell.setBorderWidth(0.5f);
+            courseRefTable.addCell(hCell);
+        }
+
+        // Course table data
+        for (Map.Entry<Long, CourseEntity> ce : distinctCourses.entrySet()) {
+            CourseEntity course = ce.getValue();
+            Set<String> rooms = courseRooms.getOrDefault(ce.getKey(), Collections.emptySet());
+
+            PdfPCell codeCell = new PdfPCell(new Phrase(course.getCode() != null ? course.getCode() : "", refCellFont));
+            codeCell.setPadding(1);
+            codeCell.setBorderWidth(0.5f);
+            courseRefTable.addCell(codeCell);
+
+            String nameWithShort = course.getName();
+            if (course.getShortName() != null && !course.getShortName().isEmpty()) {
+                nameWithShort = course.getName() + " (" + course.getShortName() + ")";
+            }
+            PdfPCell nameCell = new PdfPCell(new Phrase(nameWithShort, refCellFont));
+            nameCell.setPadding(1);
+            nameCell.setBorderWidth(0.5f);
+            courseRefTable.addCell(nameCell);
+
+            String typeLabel = course.getCourseType() == CourseType.LAB ? "Lab" : "Theory";
+            PdfPCell typeCell = new PdfPCell(new Phrase(typeLabel, refCellFont));
+            typeCell.setPadding(1);
+            typeCell.setBorderWidth(0.5f);
+            typeCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            courseRefTable.addCell(typeCell);
+
+            PdfPCell roomCell = new PdfPCell(new Phrase(String.join(", ", rooms), refCellFont));
+            roomCell.setPadding(1);
+            roomCell.setBorderWidth(0.5f);
+            courseRefTable.addCell(roomCell);
+        }
+
+        PdfPCell courseRefWrapperCell = new PdfPCell(courseRefTable);
+        courseRefWrapperCell.setBorder(PdfPCell.NO_BORDER);
+        courseRefWrapperCell.setPaddingRight(5);
+        refWrapper.addCell(courseRefWrapperCell);
+
+        // ── Right: Faculty Reference Table ──
+        PdfPTable teacherRefTable = new PdfPTable(3);
+        teacherRefTable.setWidthPercentage(100);
+        teacherRefTable.setWidths(new float[]{40f, 20f, 40f});
+
+        // Teacher table header
+        String[] teacherHeaders = {"Faculty Name", "Short Name", "Courses Taught"};
+        for (String h : teacherHeaders) {
+            PdfPCell hCell = new PdfPCell(new Phrase(h, refHeaderFont));
+            hCell.setBackgroundColor(new Color(230, 230, 230));
+            hCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            hCell.setPadding(2);
+            hCell.setBorderWidth(0.5f);
+            teacherRefTable.addCell(hCell);
+        }
+
+        // Teacher table data
+        for (Map.Entry<Long, TeacherEntity> te : distinctTeachers.entrySet()) {
+            TeacherEntity teacher = te.getValue();
+            Set<String> courses = teacherCourses.getOrDefault(te.getKey(), Collections.emptySet());
+
+            PdfPCell nameCell = new PdfPCell(new Phrase(teacher.getName() != null ? teacher.getName() : "", refCellFont));
+            nameCell.setPadding(1);
+            nameCell.setBorderWidth(0.5f);
+            teacherRefTable.addCell(nameCell);
+
+            PdfPCell shortCell = new PdfPCell(new Phrase(getProfessorShortName(teacher), refCellFont));
+            shortCell.setPadding(1);
+            shortCell.setBorderWidth(0.5f);
+            shortCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            teacherRefTable.addCell(shortCell);
+
+            PdfPCell coursesCell = new PdfPCell(new Phrase(String.join(", ", courses), refCellFont));
+            coursesCell.setPadding(1);
+            coursesCell.setBorderWidth(0.5f);
+            teacherRefTable.addCell(coursesCell);
+        }
+
+        PdfPCell teacherRefWrapperCell = new PdfPCell(teacherRefTable);
+        teacherRefWrapperCell.setBorder(PdfPCell.NO_BORDER);
+        teacherRefWrapperCell.setPaddingLeft(5);
+        refWrapper.addCell(teacherRefWrapperCell);
+
+        doc.add(refWrapper);
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 4: SIGNATURE SECTION
+        // ═══════════════════════════════════════════════════════════
+
+        doc.add(new Paragraph(" ", new Font(Font.HELVETICA, 3)));
+
+        PdfPTable sigTable = new PdfPTable(3);
+        sigTable.setWidthPercentage(90);
+        sigTable.setWidths(new float[]{33f, 34f, 33f});
+
+        PdfPCell sigLeft = new PdfPCell(new Phrase("TIME TABLE COORDINATOR", sigFont));
+        sigLeft.setBorder(PdfPCell.NO_BORDER);
+        sigLeft.setHorizontalAlignment(Element.ALIGN_LEFT);
+        sigLeft.setPaddingTop(12);
+        sigTable.addCell(sigLeft);
+
+        PdfPCell sigCenter = new PdfPCell(new Phrase("HOD", sigFont));
+        sigCenter.setBorder(PdfPCell.NO_BORDER);
+        sigCenter.setHorizontalAlignment(Element.ALIGN_CENTER);
+        sigCenter.setPaddingTop(12);
+        sigTable.addCell(sigCenter);
+
+        PdfPCell sigRight = new PdfPCell(new Phrase("DY. DIRECTOR / DIRECTOR", sigFont));
+        sigRight.setBorder(PdfPCell.NO_BORDER);
+        sigRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        sigRight.setPaddingTop(12);
+        sigTable.addCell(sigRight);
+
+        doc.add(sigTable);
+
+        doc.close();
+        return out.toByteArray();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // EXCEL GENERATION (Semester-Specific)
     // ═══════════════════════════════════════════════════════════════
 
@@ -1447,22 +2721,14 @@ public class TimetableExportService {
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
         List<TimeSlot> slots = getSortedSlots(division);
 
-        String sheetName = (division != null ? division.getName() + " Year " + division.getYear() + " " + (semester != null ? semester.name() : "") : "Timetable");
-        String title = String.format("Timetable — %s %s — Year %d — %s — %s",
-            division != null && division.getDepartment() != null ? division.getDepartment().getName() : "",
-            division != null ? division.getName() : "",
-            division != null ? division.getYear() : 0,
-            year != null ? year.getYearName() : "",
-            semester != null ? semester.name().replace("_", " ") : "");
-
-        return buildExcel(entries, slots, sheetName, title);
+        return buildInstitutionalDivisionExcel(entries, slots, division, year, semester);
     }
 
     public byte[] generateTeacherExcel(Long teacherId, Long academicYearId) throws Exception {
         List<TimetableEntry> entries = timetableService.getTeacherTimetable(teacherId, academicYearId);
         TeacherEntity teacher = teacherRepo.findById(teacherId).orElse(null);
         AcademicYear year = academicYearRepo.findById(academicYearId).orElse(null);
-        List<TimeSlot> slots = getSortedSlots(null);
+        List<TimeSlot> slots = getSortedSlotsForEntries(entries);
 
         String sheetName = teacher != null ? teacher.getName() : "Timetable";
         String title = String.format("Timetable — %s — %s",
@@ -1676,11 +2942,613 @@ public class TimetableExportService {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // INSTITUTIONAL DIVISION EXCEL (Official MITAOE Format)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Generate division timetable Excel in the official MITAOE institutional format.
+     *
+     * Layout mirrors the PDF institutional format:
+     * - Institutional header with metadata table
+     * - Grid: Days = rows (MON-SAT), Time slots = columns
+     * - Break columns merged across all day rows
+     * - Multi-batch lab cells aggregated
+     * - Course and Teacher reference tables
+     * - Signature row
+     */
+    private byte[] buildInstitutionalDivisionExcel(
+            List<TimetableEntry> entries,
+            List<TimeSlot> slots,
+            Division division,
+            AcademicYear academicYear,
+            Semester semester) throws Exception {
+
+        // ── Multi-value lookup ──
+        Map<String, List<TimetableEntry>> multiLookup = buildMultiLookup(entries);
+
+        // ── Teaching load ──
+        long theoryCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.THEORY)
+            .count();
+        long labCount = entries.stream()
+            .filter(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.LAB)
+            .count();
+        long totalCount = theoryCount + labCount;
+
+        // ── Collect distinct courses and teachers ──
+        Map<Long, CourseEntity> distinctCourses = new LinkedHashMap<>();
+        Map<Long, TeacherEntity> distinctTeachers = new LinkedHashMap<>();
+        Map<Long, Set<String>> courseRooms = new LinkedHashMap<>();
+        Map<Long, Set<String>> teacherCourses = new LinkedHashMap<>();
+
+        for (TimetableEntry e : entries) {
+            if (e.getCourse() != null) {
+                distinctCourses.putIfAbsent(e.getCourse().getId(), e.getCourse());
+                String roomNum = e.getRoom() != null ? e.getRoom().getRoomNumber() : "";
+                courseRooms.computeIfAbsent(e.getCourse().getId(), k -> new LinkedHashSet<>()).add(roomNum);
+            }
+            if (e.getTeacher() != null) {
+                distinctTeachers.putIfAbsent(e.getTeacher().getId(), e.getTeacher());
+                String courseShort = getCourseShortName(e.getCourse());
+                teacherCourses.computeIfAbsent(e.getTeacher().getId(), k -> new LinkedHashSet<>()).add(courseShort);
+            }
+        }
+
+        // ── Workbook setup ──
+        String sheetName = "Division " + (division != null ? division.getName() : "Timetable");
+        if (sheetName.length() > 31) sheetName = sheetName.substring(0, 31);
+        XSSFWorkbook wb = new XSSFWorkbook();
+        XSSFSheet sheet = wb.createSheet(sheetName);
+        sheet.setDisplayGridlines(false);
+
+        // ═══════════════════════════════════════════════════════════
+        // STYLES
+        // ═══════════════════════════════════════════════════════════
+
+        // Title style (large bold)
+        XSSFCellStyle titleStyle = wb.createCellStyle();
+        XSSFFont titleFont = wb.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 13);
+        titleStyle.setFont(titleFont);
+        titleStyle.setAlignment(HorizontalAlignment.CENTER);
+        titleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        // Meta label style (bold, bordered)
+        XSSFCellStyle metaLabelStyle = wb.createCellStyle();
+        XSSFFont metaLabelFont = wb.createFont();
+        metaLabelFont.setBold(true);
+        metaLabelFont.setFontHeightInPoints((short) 8);
+        metaLabelStyle.setFont(metaLabelFont);
+        metaLabelStyle.setBorderBottom(BorderStyle.THIN);
+        metaLabelStyle.setBorderTop(BorderStyle.THIN);
+        metaLabelStyle.setBorderLeft(BorderStyle.THIN);
+        metaLabelStyle.setBorderRight(BorderStyle.THIN);
+        metaLabelStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        // Meta value style (normal, bordered)
+        XSSFCellStyle metaValueStyle = wb.createCellStyle();
+        XSSFFont metaValFont = wb.createFont();
+        metaValFont.setFontHeightInPoints((short) 8);
+        metaValueStyle.setFont(metaValFont);
+        metaValueStyle.setBorderBottom(BorderStyle.THIN);
+        metaValueStyle.setBorderTop(BorderStyle.THIN);
+        metaValueStyle.setBorderLeft(BorderStyle.THIN);
+        metaValueStyle.setBorderRight(BorderStyle.THIN);
+        metaValueStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        // Small label style (no border)
+        XSSFCellStyle smallStyle = wb.createCellStyle();
+        XSSFFont smallFont = wb.createFont();
+        smallFont.setFontHeightInPoints((short) 7);
+        smallFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+        smallStyle.setFont(smallFont);
+
+        // Grid header style (dark bg, white bold text)
+        XSSFCellStyle gridHeaderStyle = wb.createCellStyle();
+        XSSFFont gridHdrFont = wb.createFont();
+        gridHdrFont.setBold(true);
+        gridHdrFont.setFontHeightInPoints((short) 8);
+        gridHdrFont.setColor(IndexedColors.WHITE.getIndex());
+        gridHeaderStyle.setFont(gridHdrFont);
+        gridHeaderStyle.setFillForegroundColor(new XSSFColor(new byte[]{27, 42, 78}, null));
+        gridHeaderStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        gridHeaderStyle.setAlignment(HorizontalAlignment.CENTER);
+        gridHeaderStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        gridHeaderStyle.setWrapText(true);
+        gridHeaderStyle.setBorderBottom(BorderStyle.THIN);
+        gridHeaderStyle.setBorderTop(BorderStyle.THIN);
+        gridHeaderStyle.setBorderLeft(BorderStyle.THIN);
+        gridHeaderStyle.setBorderRight(BorderStyle.THIN);
+
+        // Day label style (bold, centered, bordered)
+        XSSFCellStyle dayStyle = wb.createCellStyle();
+        XSSFFont dayFont = wb.createFont();
+        dayFont.setBold(true);
+        dayFont.setFontHeightInPoints((short) 9);
+        dayStyle.setFont(dayFont);
+        dayStyle.setAlignment(HorizontalAlignment.CENTER);
+        dayStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        dayStyle.setBorderBottom(BorderStyle.THIN);
+        dayStyle.setBorderTop(BorderStyle.THIN);
+        dayStyle.setBorderLeft(BorderStyle.THIN);
+        dayStyle.setBorderRight(BorderStyle.THIN);
+
+        // Cell style (entry content, centered, bordered, wrap)
+        XSSFCellStyle cellStyle = wb.createCellStyle();
+        XSSFFont cellFont = wb.createFont();
+        cellFont.setFontHeightInPoints((short) 8);
+        cellStyle.setFont(cellFont);
+        cellStyle.setAlignment(HorizontalAlignment.CENTER);
+        cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        cellStyle.setWrapText(true);
+        cellStyle.setBorderBottom(BorderStyle.THIN);
+        cellStyle.setBorderTop(BorderStyle.THIN);
+        cellStyle.setBorderLeft(BorderStyle.THIN);
+        cellStyle.setBorderRight(BorderStyle.THIN);
+
+        // Break style (light grey bg, italic, centered, bordered)
+        XSSFCellStyle breakStyle = wb.createCellStyle();
+        XSSFFont brkFont = wb.createFont();
+        brkFont.setItalic(true);
+        brkFont.setBold(true);
+        brkFont.setFontHeightInPoints((short) 7);
+        brkFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+        breakStyle.setFont(brkFont);
+        breakStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 245, (byte) 245, (byte) 245}, null));
+        breakStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        breakStyle.setAlignment(HorizontalAlignment.CENTER);
+        breakStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        breakStyle.setWrapText(true);
+        breakStyle.setBorderBottom(BorderStyle.THIN);
+        breakStyle.setBorderTop(BorderStyle.THIN);
+        breakStyle.setBorderLeft(BorderStyle.THIN);
+        breakStyle.setBorderRight(BorderStyle.THIN);
+        breakStyle.setRotation((short) 90);
+
+        // Reference table header style
+        XSSFCellStyle refHeaderStyle = wb.createCellStyle();
+        XSSFFont refHdrFont = wb.createFont();
+        refHdrFont.setBold(true);
+        refHdrFont.setFontHeightInPoints((short) 8);
+        refHeaderStyle.setFont(refHdrFont);
+        refHeaderStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 230, (byte) 230, (byte) 230}, null));
+        refHeaderStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        refHeaderStyle.setAlignment(HorizontalAlignment.CENTER);
+        refHeaderStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        refHeaderStyle.setBorderBottom(BorderStyle.THIN);
+        refHeaderStyle.setBorderTop(BorderStyle.THIN);
+        refHeaderStyle.setBorderLeft(BorderStyle.THIN);
+        refHeaderStyle.setBorderRight(BorderStyle.THIN);
+
+        // Reference table cell style
+        XSSFCellStyle refCellStyle = wb.createCellStyle();
+        XSSFFont refFont = wb.createFont();
+        refFont.setFontHeightInPoints((short) 7);
+        refCellStyle.setFont(refFont);
+        refCellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        refCellStyle.setWrapText(true);
+        refCellStyle.setBorderBottom(BorderStyle.THIN);
+        refCellStyle.setBorderTop(BorderStyle.THIN);
+        refCellStyle.setBorderLeft(BorderStyle.THIN);
+        refCellStyle.setBorderRight(BorderStyle.THIN);
+
+        // Signature style
+        XSSFCellStyle sigStyle = wb.createCellStyle();
+        XSSFFont sigFont = wb.createFont();
+        sigFont.setFontHeightInPoints((short) 9);
+        sigStyle.setFont(sigFont);
+        sigStyle.setVerticalAlignment(VerticalAlignment.BOTTOM);
+
+        XSSFCellStyle sigCenterStyle = wb.createCellStyle();
+        sigCenterStyle.cloneStyleFrom(sigStyle);
+        sigCenterStyle.setAlignment(HorizontalAlignment.CENTER);
+
+        XSSFCellStyle sigRightStyle = wb.createCellStyle();
+        sigRightStyle.cloneStyleFrom(sigStyle);
+        sigRightStyle.setAlignment(HorizontalAlignment.RIGHT);
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 1: INSTITUTIONAL HEADER
+        // ═══════════════════════════════════════════════════════════
+
+        int numSlots = slots.size();
+        int totalCols = numSlots + 1; // 1 day col + N slot cols
+
+        int rowIdx = 0;
+
+        // Row 0: Institution name
+        Row instRow = sheet.createRow(rowIdx);
+        instRow.setHeightInPoints(18);
+        org.apache.poi.ss.usermodel.Cell instCell = instRow.createCell(0);
+        instCell.setCellValue("MIT Academy of Engineering, Alandi (D), Pune - 412 105");
+        XSSFCellStyle instStyle = wb.createCellStyle();
+        XSSFFont instFont = wb.createFont();
+        instFont.setBold(true);
+        instFont.setFontHeightInPoints((short) 10);
+        instStyle.setFont(instFont);
+        instCell.setCellStyle(instStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, Math.min(totalCols - 1, 6)));
+        // Rev No. at right
+        if (totalCols > 7) {
+            org.apache.poi.ss.usermodel.Cell revCell = instRow.createCell(totalCols - 2);
+            revCell.setCellValue("Rev. No. : 01");
+            revCell.setCellStyle(smallStyle);
+        }
+        rowIdx++;
+
+        // Row 1: Department
+        String deptName = division != null && division.getDepartment() != null
+            ? "DEPARTMENT OF " + division.getDepartment().getName().toUpperCase() : "";
+        Row deptRow = sheet.createRow(rowIdx);
+        deptRow.setHeightInPoints(15);
+        org.apache.poi.ss.usermodel.Cell deptCell = deptRow.createCell(0);
+        deptCell.setCellValue(deptName);
+        XSSFCellStyle deptStyle = wb.createCellStyle();
+        XSSFFont deptFont = wb.createFont();
+        deptFont.setBold(true);
+        deptFont.setFontHeightInPoints((short) 9);
+        deptStyle.setFont(deptFont);
+        deptCell.setCellStyle(deptStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, Math.min(totalCols - 1, 6)));
+        rowIdx++;
+
+        // Row 2: "CLASS WISE TIME TABLE" centered
+        Row ttRow = sheet.createRow(rowIdx);
+        ttRow.setHeightInPoints(18);
+        org.apache.poi.ss.usermodel.Cell ttCell = ttRow.createCell(0);
+        ttCell.setCellValue("CLASS WISE TIME TABLE");
+        ttCell.setCellStyle(titleStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, Math.min(totalCols - 1, 6)));
+        rowIdx++;
+
+        // Row 3: Academic details + metadata table side by side
+        // Left side: academic year, semester, wef
+        Row acadRow = sheet.createRow(rowIdx);
+        acadRow.setHeightInPoints(13);
+        org.apache.poi.ss.usermodel.Cell ayCell = acadRow.createCell(0);
+        ayCell.setCellValue("ACADEMIC YEAR : " + (academicYear != null ? academicYear.getYearName() : ""));
+        ayCell.setCellStyle(smallStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 3));
+        rowIdx++;
+
+        Row semRow = sheet.createRow(rowIdx);
+        semRow.setHeightInPoints(13);
+        org.apache.poi.ss.usermodel.Cell semCell = semRow.createCell(0);
+        semCell.setCellValue("SEMESTER : " + toRomanNumeral(semester));
+        semCell.setCellStyle(smallStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 3));
+        rowIdx++;
+
+        Row wefRow = sheet.createRow(rowIdx);
+        wefRow.setHeightInPoints(13);
+        org.apache.poi.ss.usermodel.Cell wefCell = wefRow.createCell(0);
+        wefCell.setCellValue("W.E.F. : " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+        wefCell.setCellStyle(smallStyle);
+        sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 3));
+
+        // Metadata table on right side (rows 3-8, columns ~7 onward)
+        int metaCol = Math.max(7, totalCols - 5);
+        int metaStartRow = rowIdx - 2; // row 3
+
+        String classLabel = (division != null ? getYearLabel(division.getYear()) : "") + " " +
+            (division != null && division.getDepartment() != null ? division.getDepartment().getName() : "");
+        String coordinator = division != null && division.getClassTeacher() != null
+            ? division.getClassTeacher() : "";
+        String divName = division != null ? division.getName() : "";
+
+        String[][] metaData = {
+            {"CLASS", classLabel.trim()},
+            {"CLASS COORDINATOR", coordinator},
+            {"DIVISION", divName},
+            {"THEORY", String.valueOf(theoryCount)},
+            {"PRACTICAL/TUTORIAL", String.valueOf(labCount)},
+            {"TOTAL", String.valueOf(totalCount)}
+        };
+
+        for (int m = 0; m < metaData.length; m++) {
+            int mRow = metaStartRow + m;
+            Row existingRow = sheet.getRow(mRow);
+            if (existingRow == null) existingRow = sheet.createRow(mRow);
+
+            org.apache.poi.ss.usermodel.Cell lbl = existingRow.createCell(metaCol);
+            lbl.setCellValue(metaData[m][0]);
+            lbl.setCellStyle(metaLabelStyle);
+
+            org.apache.poi.ss.usermodel.Cell val = existingRow.createCell(metaCol + 1);
+            val.setCellValue(metaData[m][1]);
+            val.setCellStyle(metaValueStyle);
+        }
+
+        rowIdx++;
+
+        // Gap row
+        rowIdx++;
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 2: TIMETABLE GRID (Days = Rows, Time = Columns)
+        // ═══════════════════════════════════════════════════════════
+
+        int gridStartRow = rowIdx;
+
+        // ── Header row ──
+        Row headerRow = sheet.createRow(rowIdx);
+        headerRow.setHeightInPoints(40);
+
+        org.apache.poi.ss.usermodel.Cell dayTimeHdr = headerRow.createCell(0);
+        dayTimeHdr.setCellValue("Day / Time");
+        dayTimeHdr.setCellStyle(gridHeaderStyle);
+
+        int periodNum = 1;
+        for (int s = 0; s < numSlots; s++) {
+            TimeSlot slot = slots.get(s);
+            org.apache.poi.ss.usermodel.Cell hdrCell = headerRow.createCell(s + 1);
+
+            if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                hdrCell.setCellValue("");
+                hdrCell.setCellStyle(gridHeaderStyle);
+            } else {
+                String timeStr = slot.getStartTime() != null
+                    ? slot.getStartTime().toString().substring(0, 5) : "??:??";
+                String endStr = slot.getEndTime() != null
+                    ? slot.getEndTime().toString().substring(0, 5) : "??:??";
+                hdrCell.setCellValue(timeStr + "\nto\n" + endStr + "\n" + periodNum);
+                hdrCell.setCellStyle(gridHeaderStyle);
+                periodNum++;
+            }
+        }
+        rowIdx++;
+
+        // ── Day rows (MON-SAT) ──
+        String[] dayLabels = {"MON", "TUE", "WED", "THU", "FRI", "SAT"};
+
+        // Track break column indices for merging after all rows are created
+        List<Integer> breakColIndices = new ArrayList<>();
+        for (int s = 0; s < numSlots; s++) {
+            if (Boolean.TRUE.equals(slots.get(s).getIsBreak())) {
+                breakColIndices.add(s + 1); // +1 because col 0 is day label
+            }
+        }
+
+        for (int d = 0; d < DAY_NAMES.length; d++) {
+            String dayKey = DAY_NAMES[d];
+            Row dayRow = sheet.createRow(rowIdx);
+            dayRow.setHeightInPoints(50);
+
+            // Day label
+            org.apache.poi.ss.usermodel.Cell dayCl = dayRow.createCell(0);
+            dayCl.setCellValue(dayLabels[d]);
+            dayCl.setCellStyle(dayStyle);
+
+            // Slot cells
+            for (int s = 0; s < numSlots; s++) {
+                TimeSlot slot = slots.get(s);
+                org.apache.poi.ss.usermodel.Cell cl = dayRow.createCell(s + 1);
+
+                if (Boolean.TRUE.equals(slot.getIsBreak())) {
+                    // Break cell — only set content on first day row; merge later
+                    if (d == 0) {
+                        String slotName = slot.getSlotName() != null ? slot.getSlotName().toLowerCase() : "";
+                        if (slotName.contains("lunch")) {
+                            cl.setCellValue("LUNCH BREAK");
+                        } else {
+                            cl.setCellValue("SHORT BREAK");
+                        }
+                    }
+                    cl.setCellStyle(breakStyle);
+                } else {
+                    // Regular entry cell
+                    String key = dayKey + ":" + slot.getId();
+                    List<TimetableEntry> slotEntries = multiLookup.getOrDefault(key, Collections.emptyList());
+
+                    if (!slotEntries.isEmpty()) {
+                        boolean hasMultiple = slotEntries.size() > 1;
+                        boolean allLabs = slotEntries.stream()
+                            .allMatch(e -> e.getCourse() != null && e.getCourse().getCourseType() == CourseType.LAB);
+
+                        if (hasMultiple && allLabs) {
+                            // Multi-batch lab
+                            slotEntries.sort((a, b) -> {
+                                String bA = a.getBatch() != null ? a.getBatch().getName() : "";
+                                String bB = b.getBatch() != null ? b.getBatch().getName() : "";
+                                return bA.compareTo(bB);
+                            });
+                            StringBuilder sb = new StringBuilder();
+                            for (TimetableEntry entry : slotEntries) {
+                                String batch = entry.getBatch() != null ? entry.getBatch().getName() : "";
+                                String course = getCourseShortName(entry.getCourse());
+                                String teacher = getProfessorShortName(entry.getTeacher());
+                                String room = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
+                                if (sb.length() > 0) sb.append("\n");
+                                sb.append(batch).append("-").append(course).append("-").append(teacher).append(" (").append(room).append(")");
+                            }
+                            cl.setCellValue(sb.toString());
+                        } else {
+                            // Single entry (theory or single lab)
+                            TimetableEntry entry = slotEntries.get(0);
+                            String course = getCourseShortName(entry.getCourse());
+                            String teacher = getProfessorShortName(entry.getTeacher());
+                            String room = entry.getRoom() != null ? entry.getRoom().getRoomNumber() : "";
+                            boolean isLab = entry.getCourse() != null
+                                && entry.getCourse().getCourseType() == CourseType.LAB;
+
+                            if (isLab && entry.getBatch() != null) {
+                                cl.setCellValue(entry.getBatch().getName() + "-" + course + "\n" + teacher + "\n" + room);
+                            } else {
+                                cl.setCellValue(course + "\n" + teacher + "\n" + room);
+                            }
+                        }
+                    }
+                    cl.setCellStyle(cellStyle);
+                }
+            }
+            rowIdx++;
+        }
+
+        // Merge break columns across all day rows
+        int dayRowStart = gridStartRow + 1; // first day row
+        int dayRowEnd = dayRowStart + DAY_NAMES.length - 1; // last day row
+        for (int brkCol : breakColIndices) {
+            sheet.addMergedRegion(new CellRangeAddress(dayRowStart, dayRowEnd, brkCol, brkCol));
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 3: REFERENCE TABLES
+        // ═══════════════════════════════════════════════════════════
+
+        rowIdx++; // gap
+
+        // ── Course Reference Table ──
+        Row courseHdrRow = sheet.createRow(rowIdx);
+        courseHdrRow.setHeightInPoints(15);
+        String[] courseHeaders = {"Course Code", "Course Name (Short)", "Type", "Room No."};
+        for (int i = 0; i < courseHeaders.length; i++) {
+            org.apache.poi.ss.usermodel.Cell ch = courseHdrRow.createCell(i);
+            ch.setCellValue(courseHeaders[i]);
+            ch.setCellStyle(refHeaderStyle);
+        }
+
+        // Faculty ref headers on the right side
+        String[] facultyHeaders = {"Faculty Name", "Short Name", "Courses Taught"};
+        int facStartCol = 5; // start after a gap column
+        for (int i = 0; i < facultyHeaders.length; i++) {
+            org.apache.poi.ss.usermodel.Cell fh = courseHdrRow.createCell(facStartCol + i);
+            fh.setCellValue(facultyHeaders[i]);
+            fh.setCellStyle(refHeaderStyle);
+        }
+        rowIdx++;
+
+        // Course and Teacher data rows (side by side)
+        List<Map.Entry<Long, CourseEntity>> courseList = new ArrayList<>(distinctCourses.entrySet());
+        List<Map.Entry<Long, TeacherEntity>> teacherList = new ArrayList<>(distinctTeachers.entrySet());
+        int maxRows = Math.max(courseList.size(), teacherList.size());
+
+        for (int r = 0; r < maxRows; r++) {
+            Row refRow = sheet.createRow(rowIdx);
+            refRow.setHeightInPoints(14);
+
+            // Course data (left side)
+            if (r < courseList.size()) {
+                Map.Entry<Long, CourseEntity> ce = courseList.get(r);
+                CourseEntity course = ce.getValue();
+                Set<String> rooms = courseRooms.getOrDefault(ce.getKey(), Collections.emptySet());
+
+                org.apache.poi.ss.usermodel.Cell c0 = refRow.createCell(0);
+                c0.setCellValue(course.getCode() != null ? course.getCode() : "");
+                c0.setCellStyle(refCellStyle);
+
+                String nameShort = course.getName();
+                if (course.getShortName() != null && !course.getShortName().isEmpty()) {
+                    nameShort = course.getName() + " (" + course.getShortName() + ")";
+                }
+                org.apache.poi.ss.usermodel.Cell c1 = refRow.createCell(1);
+                c1.setCellValue(nameShort);
+                c1.setCellStyle(refCellStyle);
+
+                org.apache.poi.ss.usermodel.Cell c2 = refRow.createCell(2);
+                c2.setCellValue(course.getCourseType() == CourseType.LAB ? "Lab" : "Theory");
+                c2.setCellStyle(refCellStyle);
+
+                org.apache.poi.ss.usermodel.Cell c3 = refRow.createCell(3);
+                c3.setCellValue(String.join(", ", rooms));
+                c3.setCellStyle(refCellStyle);
+            }
+
+            // Teacher data (right side)
+            if (r < teacherList.size()) {
+                Map.Entry<Long, TeacherEntity> te = teacherList.get(r);
+                TeacherEntity teacher = te.getValue();
+                Set<String> courses = teacherCourses.getOrDefault(te.getKey(), Collections.emptySet());
+
+                org.apache.poi.ss.usermodel.Cell f0 = refRow.createCell(facStartCol);
+                f0.setCellValue(teacher.getName() != null ? teacher.getName() : "");
+                f0.setCellStyle(refCellStyle);
+
+                org.apache.poi.ss.usermodel.Cell f1 = refRow.createCell(facStartCol + 1);
+                f1.setCellValue(getProfessorShortName(teacher));
+                f1.setCellStyle(refCellStyle);
+
+                org.apache.poi.ss.usermodel.Cell f2 = refRow.createCell(facStartCol + 2);
+                f2.setCellValue(String.join(", ", courses));
+                f2.setCellStyle(refCellStyle);
+            }
+            rowIdx++;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // SECTION 4: SIGNATURE ROW
+        // ═══════════════════════════════════════════════════════════
+
+        rowIdx += 2; // gap for signature space
+        Row sigRow = sheet.createRow(rowIdx);
+        sigRow.setHeightInPoints(15);
+
+        org.apache.poi.ss.usermodel.Cell sigLeft = sigRow.createCell(0);
+        sigLeft.setCellValue("TIME TABLE COORDINATOR");
+        sigLeft.setCellStyle(sigStyle);
+
+        int midCol = totalCols / 2;
+        org.apache.poi.ss.usermodel.Cell sigCenter = sigRow.createCell(midCol);
+        sigCenter.setCellValue("HOD");
+        sigCenter.setCellStyle(sigCenterStyle);
+
+        org.apache.poi.ss.usermodel.Cell sigRight = sigRow.createCell(totalCols - 1);
+        sigRight.setCellValue("DY. DIRECTOR / DIRECTOR");
+        sigRight.setCellStyle(sigRightStyle);
+
+        // ═══════════════════════════════════════════════════════════
+        // COLUMN WIDTHS
+        // ═══════════════════════════════════════════════════════════
+
+        sheet.setColumnWidth(0, 3200); // Day column
+        for (int s = 0; s < numSlots; s++) {
+            if (Boolean.TRUE.equals(slots.get(s).getIsBreak())) {
+                sheet.setColumnWidth(s + 1, 1200); // Narrow break column
+            } else {
+                sheet.setColumnWidth(s + 1, 4800); // Regular slot column
+            }
+        }
+
+        // Print setup: landscape
+        sheet.getPrintSetup().setLandscape(true);
+        sheet.getPrintSetup().setPaperSize(org.apache.poi.ss.usermodel.PrintSetup.A4_PAPERSIZE);
+        sheet.setFitToPage(true);
+        sheet.getPrintSetup().setFitWidth((short) 1);
+        sheet.getPrintSetup().setFitHeight((short) 1);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        wb.write(out);
+        wb.close();
+        return out.toByteArray();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // HELPERS
     // ═══════════════════════════════════════════════════════════════
 
     private List<TimeSlot> getSortedSlots(Division division) {
         String slotType = division != null && division.getTimeSlotType() != null ? division.getTimeSlotType() : "TYPE_1";
+        return timeSlotRepo.findAll().stream()
+            .filter(s -> Boolean.TRUE.equals(s.getIsActive()))
+            .filter(s -> slotType.equals(s.getType()))
+            .sorted(Comparator.comparing(TimeSlot::getStartTime))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Detect the correct time slot type from the entries themselves.
+     * Used for teacher/room exports where no single division is available.
+     */
+    private List<TimeSlot> getSortedSlotsForEntries(List<TimetableEntry> entries) {
+        // Detect slot type from the entries
+        String detectedType = "TYPE_1";
+        for (TimetableEntry e : entries) {
+            if (e.getTimeSlot() != null && e.getTimeSlot().getType() != null) {
+                detectedType = e.getTimeSlot().getType();
+                break;
+            }
+        }
+        final String slotType = detectedType;
         return timeSlotRepo.findAll().stream()
             .filter(s -> Boolean.TRUE.equals(s.getIsActive()))
             .filter(s -> slotType.equals(s.getType()))

@@ -84,11 +84,6 @@ public class AdminService {
                 throw new IllegalArgumentException("Short name must be 2-5 uppercase letters only");
             }
             
-            // Check uniqueness (exclude current teacher)
-            if (isShortNameTaken(shortName, id)) {
-                throw new IllegalArgumentException("Short name '" + shortName + "' is already taken");
-            }
-            
             existing.setShortName(shortName);
         }
         

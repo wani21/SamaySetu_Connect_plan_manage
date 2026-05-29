@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   FiHome,
@@ -9,7 +9,8 @@ import {
   FiX,
   FiClock,
   FiLayers,
-  FiDownload
+  FiChevronLeft,
+  FiChevronRight
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -18,11 +19,43 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   isAdmin?: boolean;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  isOpen,
+  onClose,
+  isAdmin = false,
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
+}) => {
   const user = useAuthStore((state) => state.user);
   const role = user?.role || 'TEACHER';
+
+  // Internal collapsed state with optional controlled mode
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+
+  const toggleCollapse = () => {
+    const next = !collapsed;
+    setInternalCollapsed(next);
+    onCollapsedChange?.(next);
+  };
+
+  // Persist collapse preference in localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved !== null) {
+      const val = saved === 'true';
+      setInternalCollapsed(val);
+      onCollapsedChange?.(val);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', String(collapsed));
+  }, [collapsed]);
 
   const teacherLinks = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
@@ -50,14 +83,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     // Rooms — all admin-layout roles
     links.push({ to: '/admin/rooms', icon: FiGrid, label: 'Rooms' });
 
-    // Room Timetables — all admin-layout roles
-    links.push({ to: '/admin/room-timetables', icon: FiGrid, label: 'Room Timetables' });
-
-    // Lab Timetables — all admin-layout roles
-    links.push({ to: '/admin/lab-timetables', icon: FiGrid, label: 'Lab Timetables' });
-
-    // Faculty Timetables — all admin-layout roles
-    links.push({ to: '/admin/faculty-timetables', icon: FiUsers, label: 'Faculty Timetables' });
+    // Resource Timetables (rooms + labs + faculty) — all admin-layout roles
+    links.push({ to: '/admin/resource-timetables', icon: FiCalendar, label: 'Resource Timetables' });
 
     // Time Slots — ADMIN, SUPER_ADMIN, DEPARTMENT_ADMIN, and TIMETABLE_COORDINATOR
     if (isInstitutionAdmin || role === 'DEPARTMENT_ADMIN' || role === 'TIMETABLE_COORDINATOR') {
@@ -66,9 +93,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
 
     // Timetable — all admin-layout roles
     links.push({ to: '/admin/timetable', icon: FiCalendar, label: 'Timetable Builder' });
-
-    // Timetable Export — all admin-layout roles
-    links.push({ to: '/admin/timetable-export', icon: FiDownload, label: 'Exports' });
 
     return links;
   };
@@ -92,10 +116,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:sticky lg:top-16 inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transition-transform duration-300 lg:h-[calc(100vh-4rem)] ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-          }`}
+        className={`
+          fixed lg:sticky lg:top-16 inset-y-0 left-0 z-50
+          bg-white border-r border-gray-200
+          lg:h-[calc(100vh-4rem)]
+          transition-all duration-300 ease-in-out
+          ${collapsed ? 'w-[68px]' : 'w-64'}
+          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full relative">
           {/* Close Button (Mobile) */}
           <div className="lg:hidden flex justify-end p-4">
             <button
@@ -106,31 +136,93 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
             </button>
           </div>
 
+          {/* Collapse Toggle Button (Desktop) */}
+          <button
+            onClick={toggleCollapse}
+            className="
+              hidden lg:flex items-center justify-center
+              absolute -right-3 top-6
+              w-6 h-6 rounded-full
+              bg-white border border-gray-300
+              shadow-sm hover:shadow-md
+              text-gray-500 hover:text-primary-700
+              transition-all duration-200
+              z-10
+            "
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <FiChevronRight size={14} /> : <FiChevronLeft size={14} />}
+          </button>
+
           {/* Navigation Links */}
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+          <nav className={`flex-1 py-6 space-y-1 overflow-y-auto overflow-x-hidden ${collapsed ? 'px-2' : 'px-3'}`}>
             {links.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
                 onClick={() => window.innerWidth < 1024 && onClose()}
+                title={collapsed ? link.label : undefined}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                    ? 'bg-primary-800 text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
-                  }`
+                  `
+                    group relative flex items-center rounded-lg transition-all duration-200
+                    ${collapsed
+                      ? 'justify-center px-0 py-3'
+                      : 'gap-3 px-4 py-3'
+                    }
+                    ${isActive
+                      ? 'bg-primary-800 text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }
+                  `
                 }
               >
-                <link.icon size={20} />
-                <span className="font-medium">{link.label}</span>
+                {() => (
+                  <>
+                    <link.icon size={20} className="flex-shrink-0" />
+
+                    {/* Label — hidden when collapsed */}
+                    <span
+                      className={`
+                        font-medium whitespace-nowrap
+                        transition-all duration-300
+                        ${collapsed ? 'w-0 opacity-0 overflow-hidden' : 'w-auto opacity-100'}
+                      `}
+                    >
+                      {link.label}
+                    </span>
+
+                    {/* Tooltip — only when collapsed, on hover */}
+                    {collapsed && (
+                      <span
+                        className="
+                          absolute left-full ml-2 px-2.5 py-1.5
+                          bg-gray-900 text-white text-xs font-medium
+                          rounded-md shadow-lg
+                          whitespace-nowrap
+                          opacity-0 group-hover:opacity-100
+                          pointer-events-none
+                          transition-opacity duration-200
+                          z-50
+                        "
+                      >
+                        {link.label}
+                        <span className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+                      </span>
+                    )}
+                  </>
+                )}
               </NavLink>
             ))}
           </nav>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-200">
-            <p className="text-xs text-gray-500 text-center">
+          <div className={`p-3 border-t border-gray-200 ${collapsed ? 'px-1' : ''}`}>
+            <p className={`text-xs text-gray-400 text-center transition-opacity duration-300 ${collapsed ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100'}`}>
               © 2026 MIT Academy of Engineering
             </p>
+            {collapsed && (
+              <p className="text-xs text-gray-400 text-center">©</p>
+            )}
           </div>
         </div>
       </aside>

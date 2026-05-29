@@ -24,10 +24,12 @@ export interface RegisterRequest {
 // Academic types
 export interface AcademicYear {
   id: number;
-  name: string;
+  yearName: string;
+  name?: string; // alias — some endpoints may use 'name'
   startDate?: string;
   endDate?: string;
-  isActive?: boolean;
+  isCurrent?: boolean;
+  isActive?: boolean; // alias
 }
 
 export interface Department {
@@ -75,10 +77,16 @@ export interface Batch {
 export interface Room {
   id: number;
   name: string;
-  building?: string;
-  wing?: string;
+  roomNumber?: string;
+  buildingWing?: string;
+  building?: string; // alias
+  wing?: string; // alias
   capacity?: number;
-  type?: string;
+  roomType?: string;
+  type?: string; // alias
+  hasProjector?: boolean;
+  hasAc?: boolean;
+  isActive?: boolean;
 }
 
 export interface TimeSlot {
@@ -165,6 +173,3 @@ export interface StaffMember {
   isApproved: boolean;
   firstLogin?: boolean;
 }
-
-// Timetable Export types
-export * from './timetableExport';
