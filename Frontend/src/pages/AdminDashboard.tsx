@@ -13,9 +13,7 @@ import { DepartmentsPage } from '../components/admin/DepartmentsPage';
 import { CoursesPage } from '../components/admin/CoursesPage';
 import { DivisionsPage } from '../components/admin/DivisionsPage';
 import { TimetableExportPage } from './admin/TimetableExportPage';
-import { RoomTimetablesPage } from '../components/admin/RoomTimetablesPage';
-import { LabTimetablesPage } from '../components/admin/LabTimetablesPage';
-import { FacultyTimetablesPage } from '../components/admin/FacultyTimetablesPage';
+import { ResourceTimetablesPage } from '../components/admin/ResourceTimetablesPage';
 
 export const AdminDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -37,9 +35,11 @@ export const AdminDashboard: React.FC = () => {
             <Route path="academic-structure" element={<AcademicStructurePage />} />
             <Route path="staff" element={<StaffManagementPage />} />
             <Route path="rooms" element={<RoomsPage />} />
-            <Route path="room-timetables" element={<RoomTimetablesPage />} />
-            <Route path="lab-timetables" element={<LabTimetablesPage />} />
-            <Route path="faculty-timetables" element={<FacultyTimetablesPage />} />
+            <Route path="resource-timetables" element={<ResourceTimetablesPage />} />
+            {/* Redirects from old separate pages to unified page */}
+            <Route path="room-timetables" element={<Navigate to="/admin/resource-timetables" replace />} />
+            <Route path="lab-timetables" element={<Navigate to="/admin/resource-timetables" replace />} />
+            <Route path="faculty-timetables" element={<Navigate to="/admin/resource-timetables" replace />} />
             <Route path="time-slots" element={<TimeSlotsPage />} />
             <Route path="timetable" element={<TimetableManagementPage />} />
             <Route path="timetable-export" element={<TimetableExportPage />} />

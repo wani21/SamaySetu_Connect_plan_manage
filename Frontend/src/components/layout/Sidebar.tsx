@@ -50,14 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, isAdmin = fal
     // Rooms — all admin-layout roles
     links.push({ to: '/admin/rooms', icon: FiGrid, label: 'Rooms' });
 
-    // Room Timetables — all admin-layout roles
-    links.push({ to: '/admin/room-timetables', icon: FiGrid, label: 'Room Timetables' });
-
-    // Lab Timetables — all admin-layout roles
-    links.push({ to: '/admin/lab-timetables', icon: FiGrid, label: 'Lab Timetables' });
-
-    // Faculty Timetables — all admin-layout roles
-    links.push({ to: '/admin/faculty-timetables', icon: FiUsers, label: 'Faculty Timetables' });
+    // Resource Timetables (rooms + labs + faculty) — all admin-layout roles
+    links.push({ to: '/admin/resource-timetables', icon: FiCalendar, label: 'Resource Timetables' });
 
     // Time Slots — ADMIN, SUPER_ADMIN, DEPARTMENT_ADMIN, and TIMETABLE_COORDINATOR
     if (isInstitutionAdmin || role === 'DEPARTMENT_ADMIN' || role === 'TIMETABLE_COORDINATOR') {
