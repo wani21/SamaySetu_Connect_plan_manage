@@ -36,26 +36,38 @@ export const TimetablePage: React.FC = () => {
       ]);
 
       const slots = Array.isArray(slotsRes.data) ? slotsRes.data : [];
-      // Filter by TYPE_1 (default schedule) to avoid duplicates, keep breaks for display
-      const filteredSlots = slots
-        .filter((slot: any) => !slot.type || slot.type === 'TYPE_1')
-        .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
-      setTimeSlots(filteredSlots);
-
       const teacher = profileRes.data;
       const years = Array.isArray(yearsRes.data) ? yearsRes.data : [];
       const currentYear = years.find((y: any) => y.isCurrent);
 
+      let entries: any[] = [];
       if (teacher?.id && currentYear?.id) {
         setExportContext({ teacherId: teacher.id, academicYearId: currentYear.id });
         try {
           const ttRes = await timetableAPI.getByTeacher(teacher.id, currentYear.id);
-          setTimetableEntries(Array.isArray(ttRes.data) ? ttRes.data : []);
+          entries = Array.isArray(ttRes.data) ? ttRes.data : [];
         } catch {
           // No published timetable yet
-          setTimetableEntries([]);
+          entries = [];
         }
       }
+      setTimetableEntries(entries);
+
+      // Detect slot type from the entries themselves (consistent with PDF export)
+      let detectedType = 'TYPE_1';
+      for (const entry of entries) {
+        const type = entry.timeSlot?.type;
+        if (type) {
+          detectedType = type;
+          break;
+        }
+      }
+
+      // Filter slots to show only the detected type, keep breaks for display
+      const filteredSlots = slots
+        .filter((slot: any) => slot.type === detectedType || (!slot.type && detectedType === 'TYPE_1'))
+        .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+      setTimeSlots(filteredSlots);
     } catch (err) {
       if (import.meta.env.DEV) console.error('Failed to fetch timetable data:', err);
       setError('Failed to load timetable. Please try again later.');

@@ -5,7 +5,7 @@ import { StatsCard } from '../components/dashboard/StatsCard';
 import { Card } from '../components/common/Card';
 import { Loading } from '../components/common/Loading';
 import { useAuthStore } from '../store/authStore';
-import { teacherAPI, timetableAPI, academicYearPublicAPI, timeSlotAPI } from '../services/api';
+import { teacherAPI, timetableAPI, academicYearPublicAPI, timeSlotPublicAPI } from '../services/api';
 import { TimeSlot } from '../types';
 
 // Map backend DayOfWeek enum to display names
@@ -44,17 +44,18 @@ export const DashboardPage: React.FC = () => {
         const currentYear = years.find((y: any) => y.isActive || y.isCurrent);
 
         // 3. Get time slots
-        const slotsRes = await timeSlotAPI.getAll();
-        const sortedSlots = (slotsRes.data || [])
-          .filter((s: TimeSlot) => s.type === 'TYPE_1')
-          .sort((a: TimeSlot, b: TimeSlot) => a.startTime.localeCompare(b.startTime));
-        setTimeSlots(sortedSlots);
+        const slotsRes = await timeSlotPublicAPI.getAll();
+        const slots = Array.isArray(slotsRes.data) ? slotsRes.data : [];
+
+        let myEntries: any[] = [];
+        let dEntries: any[] = [];
 
         if (teacher?.id && currentYear?.id) {
           // 4. Fetch this teacher's published timetable
           try {
             const ttRes = await timetableAPI.getMyTimetable(currentYear.id);
-            setTimetableEntries(Array.isArray(ttRes.data) ? ttRes.data : []);
+            myEntries = Array.isArray(ttRes.data) ? ttRes.data : [];
+            setTimetableEntries(myEntries);
           } catch {
             setTimetableEntries([]);
           }
@@ -63,7 +64,7 @@ export const DashboardPage: React.FC = () => {
           if (teacher?.department?.id) {
             try {
               const deptTTRes = await timetableAPI.getFacultyDepartmentTimetable(currentYear.id, selectedSemester);
-              const dEntries = Array.isArray(deptTTRes.data) ? deptTTRes.data : [];
+              dEntries = Array.isArray(deptTTRes.data) ? deptTTRes.data : [];
               setDeptEntries(dEntries);
               
               // Select first division by default
@@ -78,6 +79,23 @@ export const DashboardPage: React.FC = () => {
             }
           }
         }
+
+        // Detect slot type from entries (teacher's own or department entries)
+        let detectedType = 'TYPE_1';
+        const allEntries = [...myEntries, ...dEntries];
+        for (const entry of allEntries) {
+          const type = entry.timeSlot?.type;
+          if (type) {
+            detectedType = type;
+            break;
+          }
+        }
+
+        // Filter and sort time slots of detected type
+        const sortedSlots = slots
+          .filter((s: TimeSlot) => s.type === detectedType || (!s.type && detectedType === 'TYPE_1'))
+          .sort((a: TimeSlot, b: TimeSlot) => a.startTime.localeCompare(b.startTime));
+        setTimeSlots(sortedSlots);
       } catch (error) {
         if (import.meta.env.DEV) console.error('Error fetching dashboard data:', error);
       } finally {
