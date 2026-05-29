@@ -35,11 +35,6 @@ export const AvailabilityPage: React.FC = () => {
       ]);
 
       const slots = Array.isArray(slotsRes.data) ? slotsRes.data : [];
-      const classSlots = slots
-        .filter((slot: any) => !slot.isBreak)
-        .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
-      setTimeSlots(classSlots);
-
       const teacher = profileRes.data;
       const years = Array.isArray(yearsRes.data) ? yearsRes.data : [];
       const currentYear = years.find((y: any) => y.isCurrent);
@@ -54,6 +49,22 @@ export const AvailabilityPage: React.FC = () => {
         }
       }
       setTimetableEntries(entries);
+
+      // Detect slot type from entries
+      let detectedType = 'TYPE_1';
+      for (const entry of entries) {
+        const type = entry.timeSlot?.type;
+        if (type) {
+          detectedType = type;
+          break;
+        }
+      }
+
+      // Filter slots to show only the detected type and exclude breaks
+      const classSlots = slots
+        .filter((slot: any) => !slot.isBreak && (slot.type === detectedType || (!slot.type && detectedType === 'TYPE_1')))
+        .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+      setTimeSlots(classSlots);
 
       // Initialize all slots as available by default
       initializeAvailability(classSlots);
