@@ -12,11 +12,12 @@ import { AdminProfilePage } from './admin/AdminProfilePage';
 import { DepartmentsPage } from '../components/admin/DepartmentsPage';
 import { CoursesPage } from '../components/admin/CoursesPage';
 import { DivisionsPage } from '../components/admin/DivisionsPage';
-import { TimetableExportPage } from './admin/TimetableExportPage';
+
 import { ResourceTimetablesPage } from '../components/admin/ResourceTimetablesPage';
 
 export const AdminDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -27,6 +28,8 @@ export const AdminDashboard: React.FC = () => {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           isAdmin={true}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
         />
 
         <main className="flex-1 p-6 lg:p-8">
@@ -42,7 +45,7 @@ export const AdminDashboard: React.FC = () => {
             <Route path="faculty-timetables" element={<Navigate to="/admin/resource-timetables" replace />} />
             <Route path="time-slots" element={<TimeSlotsPage />} />
             <Route path="timetable" element={<TimetableManagementPage />} />
-            <Route path="timetable-export" element={<TimetableExportPage />} />
+
             <Route path="departments" element={<DepartmentsPage />} />
             <Route path="courses" element={<CoursesPage />} />
             <Route path="divisions" element={<DivisionsPage />} />

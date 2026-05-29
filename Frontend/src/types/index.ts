@@ -173,6 +173,3 @@ export interface StaffMember {
   isApproved: boolean;
   firstLogin?: boolean;
 }
-
-// Timetable Export types
-export * from './timetableExport';
